@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>现代红警 Modern Red Alert</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23ff5545'/></svg>">
+<link rel="stylesheet" href="css/style.css">
+<script>
+// 错误采集器：异常写入 #errlog 和标题（便于无头验证与调试）
+window.__errors = [];
+function logErr(msg) {
+  window.__errors.push(String(msg));
+  const el = document.getElementById('errlog');
+  if (el) el.textContent = window.__errors.join('\n');
+  if (!document.title.startsWith('ERR')) document.title = 'ERR ' + document.title;
+}
+window.addEventListener('error', e => logErr(e.message + ' @' + (e.filename || '') + ':' + (e.lineno || '')));
+window.addEventListener('unhandledrejection', e => logErr('unhandled: ' + (e.reason?.stack || e.reason)));
+</script>
+</head>
+<body>
+  <div id="topbar">
+    <span class="brand">现代红警</span>
+    <span id="credits" class="stat">💰 0</span>
+    <span id="power" class="stat">⚡ 0/0</span>
+    <span id="msg"></span>
+    <span class="hint">左键框选 · 右键移动/攻击 · A 攻击移动 · D 展开 · S 停止 · X 出售 · Q/E 旋转 · Ctrl+数字 编队</span>
+  </div>
+  <div id="main">
+    <div id="canvasWrap"><canvas id="game"></canvas><div id="selbox"></div></div>
+    <div id="sidebar">
+      <div id="tabs">
+        <button class="tab active" data-tab="buildings">建筑</button>
+        <button class="tab" data-tab="infantry">步兵</button>
+        <button class="tab" data-tab="vehicles">载具</button>
+      </div>
+      <div id="buildgrid"></div>
+      <canvas id="minimap" width="192" height="192"></canvas>
+      <div id="selinfo"></div>
+    </div>
+  </div>
+  <div id="overlay" class="hidden">
+    <div id="overlayText"></div>
+    <button id="restartBtn">再来一局</button>
+  </div>
+  <div id="errlog"></div>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

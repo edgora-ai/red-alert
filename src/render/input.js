@@ -1,0 +1,258 @@
+// 输入：框选、命令下发、相机控制（平移/旋转/缩放）、快捷键、编队
+
+import { T } from '../config.js';
+
+export class Input {
+  constructor(game, canvas, world, camera, sound, renderer) {
+    this.game = game;
+    this.cv = canvas;
+    this.world = world;
+    this.cam = camera;      // {x, y, dist, yaw}
+    this.sound = sound;
+    this.renderer = renderer;
+    this.keys = new Set();
+    this.attackMove = false;
+    this.groups = {};
+    this.dragStart = null;
+    this.mouse = { x: 0, y: 0, inside: false };
+    this.selboxEl = document.getElementById('selbox');
+
+    canvas.addEventListener('contextmenu', e => e.preventDefault());
+    canvas.addEventListener('mousedown', e => this.onDown(e));
+    // 拖拽跟踪挂 window：拖出画布也能继续/完成框选
+    window.addEventListener('mousemove', e => this.onMove(e));
+    window.addEventListener('mouseup', e => this.onUp(e));
+    canvas.addEventListener('mouseleave', () => { this.mouse.inside = false; if (!this.dragStart) this.game.mouseTile = null; });
+    canvas.addEventListener('wheel', e => this.onWheel(e), { passive: false });
+    window.addEventListener('keydown', e => this.onKey(e, true));
+    window.addEventListener('keyup', e => this.onKey(e, false));
+  }
+
+  // 画布内坐标（钳制到画布范围）
+  canvasPos(e) {
+    const rect = this.cv.getBoundingClientRect();
+    const px = e.clientX - rect.left, py = e.clientY - rect.top;
+    return {
+      px, py,
+      inside: px >= 0 && py >= 0 && px <= rect.width && py <= rect.height,
+      cx: Math.max(0, Math.min(rect.width, px)),
+      cy: Math.max(0, Math.min(rect.height, py)),
+    };
+  }
+
+  s2t(px, py) {
+    return this.renderer.screenToTile(px, py);
+  }
+
+  selectedUnits() {
+    return [...this.game.selection]
+      .map(id => this.world.entities.get(id))
+      .filter(e => e && e.kind === 'unit' && e.side === 'player' && !e.dead);
+  }
+  selectedBuildings() {
+    return [...this.game.selection]
+      .map(id => this.world.entities.get(id))
+      .filter(e => e && e.kind === 'building' && e.side === 'player' && !e.dead);
+  }
+
+  // 拾取：优先最近的单位，其次建筑
+  pickAt(wx, wy) {
+    let unit = null, bestD = 0.65;
+    for (const u of this.world.entities.values()) {
+      if (u.kind !== 'unit' || u.dead) continue;
+      const d = Math.hypot(u.x - wx, u.y - wy);
+      if (d < bestD) { bestD = d; unit = u; }
+    }
+    if (unit) return unit;
+    return this.world.buildingAt(Math.floor(wx), Math.floor(wy));
+  }
+
+  onDown(e) {
+    this.sound.unlock();
+    const rect = this.cv.getBoundingClientRect();
+    const px = e.clientX - rect.left, py = e.clientY - rect.top;
+    const t = this.s2t(px, py);
+    const w = this.world;
+
+    if (e.button === 0) {
+      // 建筑放置模式
+      if (w.sides.player.placing) {
+        w.issueCommand('player', { type: 'build', tx: t.x, ty: t.y });
+        return;
+      }
+      // A 攻击移动模式
+      if (this.attackMove) {
+        const ids = this.selectedUnits().map(u => u.id);
+        if (ids.length) {
+          w.issueCommand('player', { type: 'attackmove', ids, x: t.x, y: t.y });
+          this.game.markers.push({ x: t.x, y: t.y, type: 'attack', ttl: 30, max: 30 });
+        }
+        this.attackMove = false;
+        return;
+      }
+      this.dragStart = { x: px, y: py, shift: e.shiftKey };
+    } else if (e.button === 2) {
+      if (w.sides.player.placing) { w.issueCommand('player', { type: 'cancelPlace' }); return; }
+      if (this.attackMove) { this.attackMove = false; return; }
+      this.rightCommand(t.x, t.y);
+    }
+  }
+
+  rightCommand(wx, wy) {
+    const w = this.world;
+    const units = this.selectedUnits();
+    const buildings = this.selectedBuildings();
+    if (!units.length && !buildings.length) return;
+
+    // 只选中生产建筑：右键设集结点
+    if (!units.length && buildings.length === 1) {
+      const b = buildings[0];
+      w.issueCommand('player', { type: 'rally', id: b.id, x: wx, y: wy });
+      this.game.markers.push({ x: wx, y: wy, type: 'move', ttl: 30, max: 30 });
+      return;
+    }
+    if (!units.length) return;
+    const ids = units.map(u => u.id);
+    const target = this.pickAt(wx, wy);
+
+    if (target && target.side !== 'player') {
+      w.issueCommand('player', { type: 'attack', ids, targetId: target.id });
+      this.game.markers.push({ x: wx, y: wy, type: 'attack', ttl: 30, max: 30 });
+      return;
+    }
+    const tile = w.tileAt(Math.floor(wx), Math.floor(wy));
+    if (tile === T.ORE && units.some(u => u.type === 'harvester')) {
+      // 点到矿区：矿车去采矿，其余选中单位移动到同一点（经典红警行为）
+      const harvIds = units.filter(u => u.type === 'harvester').map(u => u.id);
+      const otherIds = ids.filter(id => !harvIds.includes(id));
+      w.issueCommand('player', { type: 'harvest', ids: harvIds });
+      if (otherIds.length) w.issueCommand('player', { type: 'move', ids: otherIds, x: wx, y: wy });
+      this.game.markers.push({ x: wx, y: wy, type: 'move', ttl: 30, max: 30 });
+      return;
+    }
+    w.issueCommand('player', { type: 'move', ids, x: wx, y: wy });
+    this.game.markers.push({ x: wx, y: wy, type: 'move', ttl: 30, max: 30 });
+  }
+
+  onMove(e) {
+    const { px, py, inside, cx, cy } = this.canvasPos(e);
+    this.mouse = { x: px, y: py, inside };
+    const t = this.s2t(cx, cy);
+    this.game.mouseTile = { tx: Math.floor(t.x), ty: Math.floor(t.y) };
+
+    if (this.dragStart) {
+      const dx = cx - this.dragStart.x, dy = cy - this.dragStart.y;
+      if (Math.abs(dx) + Math.abs(dy) > 6) {
+        this.game.selectBox = { x0: this.dragStart.x, y0: this.dragStart.y, x1: cx, y1: cy };
+        // 显示框选矩形（HTML 覆盖层，屏幕坐标）
+        const el = this.selboxEl;
+        if (el) {
+          el.style.display = 'block';
+          el.style.left = Math.min(this.dragStart.x, cx) + 'px';
+          el.style.top = Math.min(this.dragStart.y, cy) + 'px';
+          el.style.width = Math.abs(dx) + 'px';
+          el.style.height = Math.abs(dy) + 'px';
+        }
+      }
+    }
+  }
+
+  onUp(e) {
+    if (e.button !== 0 || !this.dragStart) { this.dragStart = null; return; }
+    const { cx, cy } = this.canvasPos(e);
+    const shift = this.dragStart.shift;
+    const box = this.game.selectBox;
+    this.game.selectBox = null;
+    this.dragStart = null;
+    if (this.selboxEl) this.selboxEl.style.display = 'none';
+
+    if (box) { // 框选玩家单位（屏幕四角反投影到地面）
+      const a = this.s2t(Math.min(box.x0, box.x1), Math.min(box.y0, box.y1));
+      const b = this.s2t(Math.max(box.x0, box.x1), Math.max(box.y0, box.y1));
+      const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x);
+      const y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y);
+      const ids = this.world.unitsOf('player')
+        .filter(u => u.x >= x0 && u.x <= x1 && u.y >= y0 && u.y <= y1)
+        .map(u => u.id);
+      if (!shift) this.game.selection.clear();
+      ids.forEach(id => this.game.selection.add(id));
+      if (ids.length) this.sound.play({ type: 'select' });
+      return;
+    }
+
+    // 点选
+    const t = this.s2t(cx, cy);
+    const picked = this.pickAt(t.x, t.y);
+    if (!shift) this.game.selection.clear();
+    if (picked && picked.side === 'player') {
+      this.game.selection.add(picked.id);
+      this.sound.play({ type: 'select' });
+    }
+  }
+
+  onWheel(e) {
+    e.preventDefault();
+    this.cam.dist = Math.min(70, Math.max(10, this.cam.dist * (e.deltaY > 0 ? 1.12 : 0.9)));
+  }
+
+  onKey(e, down) {
+    const k = e.key.toLowerCase();
+    if (down) {
+      this.sound.unlock();
+      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'q', 'e'].includes(k)) { this.keys.add(k); if (k.startsWith('arrow')) e.preventDefault(); }
+      const w = this.world;
+      const ids = this.selectedUnits().map(u => u.id);
+      switch (k) {
+        case 'a': if (ids.length) this.attackMove = true; break;
+        case 's': w.issueCommand('player', { type: 'stop', ids }); break;
+        case 'd': w.issueCommand('player', { type: 'deploy', ids }); break;
+        case 'x': {
+          const b = this.selectedBuildings()[0];
+          if (b) { w.issueCommand('player', { type: 'sell', id: b.id }); this.game.selection.delete(b.id); }
+          break;
+        }
+        case 'escape':
+          if (w.sides.player.placing) w.issueCommand('player', { type: 'cancelPlace' });
+          this.attackMove = false;
+          break;
+        default:
+          if (/^[1-3]$/.test(k)) {
+            if (e.ctrlKey || e.metaKey) { this.groups[k] = ids; e.preventDefault(); }
+            else if (this.groups[k]?.length) {
+              this.game.selection = new Set(this.groups[k].filter(id => w.entities.has(id)));
+              this.sound.play({ type: 'select' });
+            }
+          }
+      }
+    } else {
+      this.keys.delete(k);
+    }
+  }
+
+  updateCamera(dt) {
+    // Q/E 旋转视角
+    if (this.keys.has('q')) this.cam.yaw += dt * 1.8;
+    if (this.keys.has('e')) this.cam.yaw -= dt * 1.8;
+
+    const speed = 16 * dt * (this.cam.dist / 26);
+    // 屏幕方向 → 地面方向（随 yaw 旋转）
+    const fx = -Math.sin(this.cam.yaw), fy = -Math.cos(this.cam.yaw); // 前
+    const rx = -fy, ry = fx;                                          // 右
+    let mx = 0, my = 0;
+    if (this.keys.has('arrowup')) { mx += fx; my += fy; }
+    if (this.keys.has('arrowdown')) { mx -= fx; my -= fy; }
+    if (this.keys.has('arrowleft')) { mx -= rx; my -= ry; }
+    if (this.keys.has('arrowright')) { mx += rx; my += ry; }
+    // 边缘滚动（框选拖拽中禁用，防止视野跑偏）
+    if (this.mouse.inside && !this.dragStart) {
+      const m = 14;
+      if (this.mouse.x < m) { mx -= rx; my -= ry; }
+      if (this.mouse.x > this.renderer.vw - m) { mx += rx; my += ry; }
+      if (this.mouse.y < m) { mx += fx; my += fy; }
+      if (this.mouse.y > this.renderer.vh - m) { mx -= fx; my -= fy; }
+    }
+    const len = Math.hypot(mx, my) || 1;
+    this.cam.x = Math.min(this.world.w, Math.max(0, this.cam.x + (mx / len) * speed));
+    this.cam.y = Math.min(this.world.h, Math.max(0, this.cam.y + (my / len) * speed));
+  }
+}
