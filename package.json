@@ -4,7 +4,7 @@
   "description": "现代版红色警戒 — 浏览器 RTS 遭遇战",
   "type": "module",
   "scripts": {
-    "start": "python3 -m http.server 8000",
+    "start": "python3 server.py",
     "test": "node test/smoke.mjs"
   }
 }

@@ -1,9 +1,9 @@
-// AI 指挥官：难度分级、建造序列、爆兵、分波次进攻、基地防守反应
+// AI 指挥官：难度分级、建造序列、爆兵、分波次进攻、基地防守反应、争夺中立建筑、超级武器
 
 import { UNITS, UPGRADES, DIFFS } from '../config.js';
 
 const BUILD_ORDER = [
-  'power', 'refinery', 'barracks', 'factory', 'power',
+  'power', 'refinery', 'barracks', 'factory', 'repair', 'power',
   'radar', 'laser', 'sam', 'npower', 'railgun', 'power', 'laser',
 ];
 
@@ -35,7 +35,9 @@ export class Commander {
     this.produceArmy();
     this.launchWaves();
     this.defendBase();
+    this.tryCapture();
     this.research();
+    this.fireSuper();
   }
 
   // 建筑序列 + 放置
@@ -103,11 +105,13 @@ export class Commander {
       else {
         const playerAir = w.unitsOf('player').some(u => UNITS[u.type]?.fly);
         const hasRadar = buildings.some(b => b.type === 'radar');
-        // 困难：更重的坦克海 + 雷达后补火箭炮；玩家有空军：掺弹炮车
+        const hasNPower = buildings.some(b => b.type === 'npower');
+        // 困难：更重的坦克海 + 雷达后补火箭炮；有核电站后掺泰坦机甲；玩家出空军：掺弹炮车
         let cycle = this.diff.incomeMul > 1.2
           ? ['tyrant', 'tyrant', 'tyrant', 'hunter', 'tyrant']
           : ['tyrant', 'tyrant', 'hunter', 'tyrant'];
         if (hasRadar) cycle = [...cycle, 'mlrs', 'mlrs'];
+        if (hasRadar && hasNPower && this.diff.incomeMul > 1.2) cycle = [...cycle, 'titan'];
         if (playerAir) cycle = ['tyrant', 'hunter', 'hunter', 'tyrant'];
         item = cycle[this.armyCounter++ % cycle.length];
       }
@@ -116,6 +120,41 @@ export class Commander {
     if (barracks && barracks.queue.length < 1 && this.armyCounter % 2 === 0) {
       w.issueCommand(s, { type: 'produce', item: this.armyCounter % 5 === 0 ? 'rocket' : 'rifle' });
     }
+    // 场上有无主补给站且己方未占：补工程师
+    const wantOutpost = this.neutralOutposts().length && !this.neutralOutposts().some(b => b.side === s);
+    if (wantOutpost && barracks && !barracks.queue.length
+      && !w.unitsOf(s).some(u => UNITS[u.type]?.capture)) {
+      w.issueCommand(s, { type: 'produce', item: 'engineer' });
+    }
+  }
+
+  neutralOutposts() {
+    return [...this.world.entities.values()].filter(e => e.kind === 'building' && !e.dead && e.type === 'outpost');
+  }
+
+  // 派遣空闲工程师占领最近的中立补给站
+  tryCapture() {
+    const w = this.world, s = this.side;
+    const outposts = this.neutralOutposts();
+    if (!outposts.length || outposts.some(b => b.side === s)) return;
+    const engs = w.unitsOf(s).filter(u => UNITS[u.type]?.capture && u.order?.type !== 'capture');
+    for (const u of engs) {
+      const tgt = outposts
+        .map(b => ({ b, d: Math.hypot(b.x - u.x, b.y - u.y) }))
+        .sort((a, c) => a.d - c.d)[0]?.b;
+      if (tgt) w.issueCommand(s, { type: 'capture', ids: [u.id], targetId: tgt.id });
+    }
+  }
+
+  // 超级武器：授权就绪且冷却归零时，砸玩家最值钱的建筑
+  fireSuper() {
+    const w = this.world, s = this.side;
+    if (!w.upgrades[s].owned.has('super') || (w.superCd[s] ?? 0) > 0) return;
+    const targets = w.buildingsOf('player');
+    if (!targets.length) return;
+    const t = targets.find(b => b.type === 'yard')
+      || targets.slice().sort((a, b) => b.maxHp - a.maxHp)[0];
+    w.issueCommand(s, { type: 'superstrike', x: t.x + (Math.random() - 0.5) * 1.2, y: t.y + (Math.random() - 0.5) * 1.2 });
   }
 
   // 科技研发：钱有余裕就升级（困难全序研发，普通优先经济）
@@ -125,7 +164,7 @@ export class Commander {
     if (!radar || radar.queue.length) return;
     const owned = w.upgrades[s].owned;
     const order = this.diff.incomeMul > 1.2
-      ? ['ap', 'mining', 'composite', 'engine']
+      ? ['ap', 'mining', 'super', 'composite', 'engine']
       : ['mining', 'ap'];
     for (const id of order) {
       if (owned.has(id)) continue;

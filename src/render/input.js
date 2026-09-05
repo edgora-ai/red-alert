@@ -76,6 +76,14 @@ export class Input {
     const w = this.world;
 
     if (e.button === 0) {
+      // 超级武器落点瞄准
+      if (this.superTarget) {
+        const ok = w.issueCommand('player', { type: 'superstrike', x: t.x, y: t.y });
+        if (ok) this.game.markers.push({ x: t.x, y: t.y, type: 'attack', ttl: 30, max: 30 });
+        this.superTarget = false;
+        this.updateCursorState();
+        return;
+      }
       // 建筑放置模式
       if (w.sides.player.placing) {
         w.issueCommand('player', { type: 'build', tx: t.x, ty: t.y });
@@ -94,10 +102,26 @@ export class Input {
       }
       this.dragStart = { x: px, y: py, shift: e.shiftKey };
     } else if (e.button === 2) {
+      if (this.superTarget) { this.superTarget = false; this.updateCursorState(); return; }
       if (w.sides.player.placing) { w.issueCommand('player', { type: 'cancelPlace' }); return; }
       if (this.attackMove) { this.attackMove = false; this.updateCursorState(); return; }
       this.rightCommand(t.x, t.y);
     }
+  }
+
+  // 超级武器瞄准模式（侧栏按钮 / V 键进入，左键落点，右键/ESC 取消）
+  startSuperTarget() {
+    const w = this.world;
+    if (!w.upgrades.player.owned.has('super')) return;
+    if ((w.superCd.player ?? 0) > 0) {
+      w.messages.push({ side: 'player', text: `轨道炮充能中（${Math.ceil(w.superCd.player / 30)}s）`, ttl: 70 });
+      this.sound.play({ type: 'error' });
+      return;
+    }
+    this.superTarget = true;
+    this.attackMove = false;
+    w.messages.push({ side: 'player', text: '选择轨道打击落点（右键取消）', ttl: 110 });
+    this.updateCursorState();
   }
 
   rightCommand(wx, wy) {
@@ -236,6 +260,7 @@ export class Input {
       const ids = this.selectedUnits().map(u => u.id);
       switch (k) {
         case 'a': if (ids.length) this.attackMove = true; break;
+        case 'v': this.startSuperTarget(); break;
         case 's': w.issueCommand('player', { type: 'stop', ids }); break;
         case 'd': w.issueCommand('player', { type: 'deploy', ids }); break;
         case 't': { // 全选屏内战斗单位
@@ -263,29 +288,52 @@ export class Input {
         case 'escape':
           if (w.sides.player.placing) w.issueCommand('player', { type: 'cancelPlace' });
           this.attackMove = false;
+          this.superTarget = false;
           break;
+        case ' ': { // 空格：跳到最近一次受击警报点
+          const al = w.alerts.filter(a => a.side === 'player');
+          if (al.length) {
+            const a = al[al.length - 1];
+            this.cam.x = a.x; this.cam.y = a.y;
+            this.game.userCam = true;
+          }
+          e.preventDefault();
+          break;
+        }
         default:
-          if (/^[1-3]$/.test(k)) {
+          if (/^[1-9]$/.test(k)) {
             if (e.ctrlKey || e.metaKey) { this.groups[k] = ids; e.preventDefault(); }
             else if (this.groups[k]?.length) {
               this.game.selection = new Set(this.groups[k].filter(id => w.entities.has(id)));
               this.sound.play({ type: 'select' });
+              // 双击编组键：视角跳到编组中心
+              const now2 = performance.now();
+              if (this.lastGroup === k && now2 - this.lastGroupT < 350) {
+                const sel2 = [...this.game.selection].map(id => w.entities.get(id)).filter(Boolean);
+                if (sel2.length) {
+                  this.cam.x = sel2.reduce((s, u) => s + u.x, 0) / sel2.length;
+                  this.cam.y = sel2.reduce((s, u) => s + u.y, 0) / sel2.length;
+                  this.game.userCam = true;
+                }
+              }
+              this.lastGroup = k; this.lastGroupT = now2;
             }
           }
       }
       this.updateCursorState();
       // 命令类按键 = 玩家接管（演示模式停止自动化）
-      if (['a', 's', 'd', 'x', 't'].includes(k) || /^[1-3]$/.test(k)) this.game.userPlay = true;
+      if (['a', 's', 'd', 'x', 't', 'v'].includes(k) || /^[1-9]$/.test(k)) this.game.userPlay = true;
     } else {
       this.keys.delete(k);
     }
   }
 
-  // 光标状态：攻击移动/指向敌人时用红色攻击光标
+  // 光标状态：攻击移动/指向敌人时用红色攻击光标；超武瞄准用十字光标
   updateCursorState() {
     const armed = this.selectedUnits().some(u => u.weapon);
-    const attacking = this.attackMove || (armed && this.hoverEnemy);
+    const attacking = this.superTarget || this.attackMove || (armed && this.hoverEnemy);
     this.cv.classList.toggle('cursor-attack', !!attacking);
+    this.cv.classList.toggle('cursor-super', !!this.superTarget);
   }
 
   updateCamera(dt) {
@@ -304,7 +352,7 @@ export class Input {
     if (this.keys.has('arrowright')) { mx += rx; my += ry; }
     // 边缘滚动（框选拖拽中禁用，防止视野跑偏）
     if (this.mouse.inside && !this.dragStart) {
-      const m = 18;
+      const m = 26;
       if (this.mouse.x < m) { mx -= rx; my -= ry; }
       if (this.mouse.x > this.renderer.vw - m) { mx += rx; my += ry; }
       if (this.mouse.y < m) { mx += fx; my += fy; }

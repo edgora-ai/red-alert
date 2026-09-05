@@ -33,6 +33,7 @@ export const WEAPONS = {
   mlrsW:     { name: '远程火箭弹',   dmg: 55,  dtype: 'missile', range: 10.5, minRange: 4, cooldown: 150, projSpeed: 0.32, canAir: false, splash: 1.2, burst: 6, burstCd: 5 },
   reaperW:   { name: '空地导弹',     dmg: 75,  dtype: 'missile', range: 7,   cooldown: 50,  projSpeed: 0.5,  canAir: false, splash: 0.4 },
   sniperW:   { name: '反器材狙击枪', dmg: 70,  dtype: 'bullet',  range: 8.5, cooldown: 55,  projSpeed: 0,    canAir: false, splash: 0 },
+  titanW:    { name: '双联电磁轨道炮', dmg: 115, dtype: 'shell',   range: 8.5, cooldown: 85,  projSpeed: 1.1,  canAir: false, splash: 0.5, burst: 2, burstCd: 9 },
 };
 
 // 单位：speed 瓦片/s，sight 瓦片，buildTime 秒
@@ -40,7 +41,7 @@ export const WEAPONS = {
 export const UNITS = {
   rifle:    { name: '突击兵',         cost: 150,  buildTime: 5,  hp: 120, armor: 'light', speed: 1.6, sight: 5, weapon: 'mg',  producer: 'barracks', inf: true },
   rocket:   { name: '火箭兵',         cost: 300,  buildTime: 8,  hp: 100, armor: 'light', speed: 1.4, sight: 6, weapon: 'rpg', producer: 'barracks', inf: true },
-  sniper:   { name: '幽灵狙击手',     cost: 450,  buildTime: 10, hp: 90,  armor: 'light', speed: 1.4, sight: 9, weapon: 'sniperW', producer: 'barracks', inf: true, side: 'player' },
+  sniper:   { name: '幽灵狙击手',     cost: 450,  buildTime: 10, hp: 90,  armor: 'light', speed: 1.4, sight: 9, weapon: 'sniperW', producer: 'barracks', inf: true, side: 'player', stealth: true },
   engineer: { name: '工程师',         cost: 500,  buildTime: 12, hp: 80,  armor: 'light', speed: 1.5, sight: 4, capture: true, producer: 'barracks', inf: true },
   harvester:{ name: '驮马采矿车',     cost: 900,  buildTime: 18, hp: 550, armor: 'heavy', speed: 1.8, sight: 4, harvester: true, producer: 'factory' },
   cheetah:  { name: '猎豹II主战坦克', cost: 800,  buildTime: 16, hp: 420, armor: 'heavy', speed: 2.2, sight: 6, weapon: 'cannon', producer: 'factory', side: 'player' },
@@ -52,20 +53,23 @@ export const UNITS = {
   reaper:   { name: '死神察打无人机', cost: 1800, buildTime: 32, hp: 260, armor: 'air',   speed: 2.8, sight: 9, weapon: 'reaperW', producer: 'factory', prereq: ['radar'], fly: true, side: 'player' },
   ghost:    { name: '幽灵武装无人机', cost: 900,  buildTime: 18, hp: 230, armor: 'air',   speed: 3.2, sight: 8, weapon: 'pods', producer: 'factory', fly: true, prereq: ['radar'], side: 'player' },
   mcv:      { name: '基地车',         cost: 2000, buildTime: 40, hp: 650, armor: 'heavy', speed: 1.5, sight: 5, deploys: 'yard', producer: 'factory' },
+  titan:    { name: '泰坦重型机甲',   cost: 3200, buildTime: 45, hp: 950, armor: 'heavy', speed: 1.5, sight: 8, weapon: 'titanW', producer: 'factory', prereq: ['radar', 'npower'] },
 };
 
 // 建筑：power 正=供电 负=耗电；produces 指可生产的单位/建筑列表
 export const BUILDINGS = {
-  yard:     { name: '建造厂',       cost: 2000, buildTime: 40, w: 3, h: 3, hp: 1200, power: -20, sight: 6, produces: ['power', 'refinery', 'barracks', 'factory', 'radar', 'npower', 'laser', 'sam', 'railgun'] },
+  yard:     { name: '建造厂',       cost: 2000, buildTime: 40, w: 3, h: 3, hp: 1200, power: -20, sight: 6, produces: ['power', 'refinery', 'barracks', 'factory', 'radar', 'npower', 'laser', 'sam', 'railgun', 'repair'] },
   power:    { name: '燃气电厂',     cost: 600,  buildTime: 12, w: 2, h: 2, hp: 600,  power: 100,  sight: 4 },
   npower:   { name: '核电站',       cost: 1200, buildTime: 24, w: 3, h: 3, hp: 750,  power: 250,  sight: 4, prereq: ['radar'] },
   refinery: { name: '矿石精炼厂',   cost: 1800, buildTime: 30, w: 3, h: 2, hp: 1000, power: -40,  sight: 5, grants: 'harvester', refinery: true },
   barracks: { name: '兵营',         cost: 500,  buildTime: 10, w: 2, h: 2, hp: 750,  power: -20,  sight: 5, produces: ['rifle', 'rocket', 'engineer'] },
-  factory:  { name: '战车工厂',     cost: 1800, buildTime: 32, w: 3, h: 3, hp: 1100, power: -30,  sight: 5, prereq: ['barracks'], produces: ['harvester', 'cheetah', 'tyrant', 'hunter', 'longsword', 'aurora', 'ghost', 'mcv'] },
-  radar:    { name: '雷达站',       cost: 1200, buildTime: 20, w: 2, h: 2, hp: 850,  power: -50,  sight: 10, prereq: ['factory'], produces: ['ap', 'composite', 'engine', 'mining'] },
+  factory:  { name: '战车工厂',     cost: 1800, buildTime: 32, w: 3, h: 3, hp: 1100, power: -30,  sight: 5, prereq: ['barracks'], produces: ['harvester', 'cheetah', 'tyrant', 'hunter', 'longsword', 'aurora', 'ghost', 'mcv', 'titan'] },
+  radar:    { name: '雷达站',       cost: 1200, buildTime: 20, w: 2, h: 2, hp: 850,  power: -50,  sight: 10, prereq: ['factory'], produces: ['ap', 'composite', 'engine', 'mining', 'super'] },
   laser:    { name: '激光防御塔',   cost: 800,  buildTime: 14, w: 1, h: 1, hp: 550,  power: -30,  sight: 7, weapon: 'laserT', defense: true },
   sam:      { name: '防空导弹阵地', cost: 700,  buildTime: 12, w: 1, h: 1, hp: 500,  power: -20,  sight: 9, weapon: 'samW', defense: true },
   railgun:  { name: '电磁轨道炮塔', cost: 1400, buildTime: 24, w: 1, h: 1, hp: 650,  power: -60,  sight: 8, weapon: 'railW', defense: true, prereq: ['radar'] },
+  repair:   { name: '无人修理厂',   cost: 900,  buildTime: 16, w: 2, h: 2, hp: 800,  power: -25,  sight: 5, prereq: ['factory'], repair: true },
+  outpost:  { name: '中立补给站',   cost: 0,    buildTime: 0,  w: 2, h: 2, hp: 1100, power: 0,    sight: 6, neutral: true },
 };
 
 // 全局科技升级：雷达站研发，一次购买全军永久生效（fire=火力倍率 armor=承伤倍率 speed=机动倍率 mine=采矿倍率）
@@ -74,6 +78,7 @@ export const UPGRADES = {
   composite: { name: '复合装甲',   cost: 1800, buildTime: 35, producer: 'radar', prereq: ['ap'], effect: 'armor', value: 1 / 1.2, desc: '全军承受伤害 -17%' },
   engine:    { name: '引擎强化',   cost: 1200, buildTime: 25, producer: 'radar', effect: 'speed', value: 1.25, desc: '全军机动 +25%' },
   mining:    { name: '采矿优化',   cost: 1500, buildTime: 30, producer: 'radar', prereq: ['refinery'], effect: 'mine', value: 1.3, desc: '采矿效率 +30%' },
+  super:     { name: '轨道打击授权', cost: 2500, buildTime: 45, producer: 'radar', prereq: ['npower'], effect: 'super', desc: '解锁超级武器「轨道动能炮」（V 键 / 侧栏按钮，180s 冷却）' },
 };
 
 export const ECON = {
@@ -82,6 +87,10 @@ export const ECON = {
   loadAmount: 700,      // 每车矿入账
   harvestTicks: 90,     // 装满一车所需 tick
   placeMargin: 2,       // 建筑须邻近己方建筑的格距
+  super: { dmg: 950, radius: 3.4, delay: 50, cooldown: 5400 }, // 轨道炮：预警 1.7s，冷却 180s
+  repair: { radius: 3.2, rate: 10, costPerHp: 0.5 },           // 修理厂：10 HP/s，$0.5/HP
+  neutral: { period: 150, income: 100 },                       // 中立补给站：每 5s +$100
+  cloak: { reveal: 90, near: 2.6 },                            // 狙击手迷彩：开火后现形 3s，近身 2.6 格内现形
 };
 
 // 老兵等级：击杀积攒经验，晋升提升火力与耐久（chevrons 渲染见 renderer）

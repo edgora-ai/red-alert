@@ -145,6 +145,87 @@ if (harv) {
   check('采矿车无视攻击移动（继续采矿）', harv.order.type !== 'attackmove', `order=${harv.order.type}`);
 }
 
+// —— 阶段8：中立补给站（工程师占领 + 持续收入） ——
+// 找一块 2x2 无建筑占用的空地，铺成草地并留出工程师落位圈
+function freeSpot2x2(tx0, ty0) {
+  for (let r = 0; r < 20; r++) {
+    for (let ty = ty0 - r; ty <= ty0 + r; ty++) {
+      for (let tx = tx0 - r; tx <= tx0 + r; tx++) {
+        let ok = true;
+        for (let dy = -1; dy <= 2 && ok; dy++)
+          for (let dx = -1; dx <= 2 && ok; dx++)
+            if (!world.inBounds(tx + dx, ty + dy) || world.bgrid[world.idx(tx + dx, ty + dy)] !== -1) ok = false;
+        if (!ok) continue;
+        for (let dy = -1; dy <= 2; dy++)
+          for (let dx = -1; dx <= 2; dx++) {
+            world.tiles[world.idx(tx + dx, ty + dy)] = TT.GRASS;
+            world.ore[world.idx(tx + dx, ty + dy)] = 0;
+          }
+        return { tx, ty };
+      }
+    }
+  }
+  return null;
+}
+const opSpot = freeSpot2x2(50, 30);
+const op = world.addBuilding('neutral', 'outpost', opSpot.tx, opSpot.ty);
+const eng = world.addUnit('player', 'engineer', opSpot.tx + 1.5, opSpot.ty + 2.5);
+world.issueCommand('player', { type: 'capture', ids: [eng.id], targetId: op.id });
+for (let i = 0; i < 240 && world.entities.get(op.id)?.side !== 'player'; i++) world.tick();
+check('工程师占领中立补给站', world.entities.get(op.id)?.side === 'player', `side=${world.entities.get(op.id)?.side}`);
+const cNeutral = world.credits.player;
+for (let i = 0; i < 160; i++) world.tick();
+check('中立补给站持续产出资金', world.credits.player - cNeutral >= 100, `+$${world.credits.player - cNeutral}`);
+
+// —— 阶段9：修理厂（范围内载具自动维修 + 按耐久扣费） ——
+// 临时移走采矿车与已占领补给站，隔离采矿/中立收入对资金断言的干扰
+const harvsAway = world.unitsOf('player').filter(u => u.type === 'harvester');
+harvsAway.forEach(h => world.entities.delete(h.id));
+world.entities.delete(op.id);
+world.credits.player = 12000;
+const rp = findPlace('repair');
+check('修理厂建造并放置成功', produceAndPlace('repair', rp.tx, rp.ty) === true);
+const repB = world.buildingsOf('player').find(b => b.type === 'repair');
+const repTank = world.addUnit('player', 'cheetah', repB.x + 0.5, repB.y + 0.5);
+repTank.hp = repTank.maxHp * 0.3;
+const cRepair = world.credits.player;
+for (let i = 0; i < 300; i++) world.tick();
+check('修理厂修复载具并扣费', repTank.hp > repTank.maxHp * 0.3 && world.credits.player < cRepair,
+  `hp=${Math.round(repTank.hp)}/${Math.round(repTank.maxHp)} $${cRepair}->${Math.round(world.credits.player)}`);
+harvsAway.forEach(h => world.entities.set(h.id, h)); // 归还采矿车与补给站
+world.entities.set(op.id, op);
+
+// —— 阶段10：狙击手光学迷彩（闭火隔离“开火现形”） ——
+const sn = world.addUnit('player', 'sniper', 40.5, 40.5);
+sn.cooldown = 5000; // 全程闭火：排除开火现形干扰
+const foeTank = world.addUnit('enemy', 'tyrant', 44.5, 40.5);
+foeTank.order = { type: 'idle' }; foeTank.path = null;
+for (let i = 0; i < 100; i++) world.tick();
+check('迷彩生效：远处敌人无法索敌狙击手', foeTank.targetId !== sn.id, `target=${foeTank.targetId}`);
+sn.cloak = 45; // 强制现形（等效开火后显形窗口内）
+for (let i = 0; i < 40 && foeTank.targetId !== sn.id; i++) world.tick();
+check('现形后被正常索敌', foeTank.targetId === sn.id, `target=${foeTank.targetId}`);
+
+// —— 阶段11：超级武器「轨道动能炮」（研发→锁定→落地→冷却） ——
+world.credits.player = 20000;
+const np = findPlace('npower');
+check('核电站建造并放置成功', produceAndPlace('npower', np.tx, np.ty) === true);
+world.issueCommand('player', { type: 'produce', item: 'super' });
+for (let i = 0; i < 2200 && !world.upgrades.player.owned.has('super'); i++) world.tick();
+check('轨道打击授权研发完成', world.upgrades.player.owned.has('super'));
+check('泰坦机甲可进入战车工厂生产队列', (() => {
+  world.credits.player = Math.max(world.credits.player, 5000);
+  return world.issueCommand('player', { type: 'produce', item: 'titan' }) === true;
+})());
+const tSpot = freeSpot2x2(45, 70);
+const tgt = world.addBuilding('enemy', 'power', tSpot.tx, tSpot.ty);
+const hp0 = tgt.hp;
+check('超武发射并进入冷却', world.issueCommand('player', { type: 'superstrike', x: tSpot.tx + 1, y: tSpot.ty + 1 }) === true);
+check('冷却期间无法二次发射', world.issueCommand('player', { type: 'superstrike', x: tSpot.tx + 1, y: tSpot.ty + 1 }) === false);
+for (let i = 0; i < 120; i++) world.tick();
+check('轨道炮落地造成毁灭伤害', tgt.dead || tgt.hp < hp0 * 0.5,
+  `hp ${Math.round(hp0)} -> ${tgt.dead ? '已摧毁' : Math.round(tgt.hp)}`);
+
 // —— 收尾：迷雾与消息机制 ——
 check('战争迷雾已刷新', world.fog.some(v => v >= 1));
 

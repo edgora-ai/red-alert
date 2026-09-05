@@ -17,6 +17,11 @@ function logErr(msg) {
 }
 window.addEventListener('error', e => logErr(e.message + ' @' + (e.filename || '') + ':' + (e.lineno || '')));
 window.addEventListener('unhandledrejection', e => logErr('unhandled: ' + (e.reason?.stack || e.reason)));
+// 可见错误提示条：任何脚本异常都不静默（游戏循环内部会自行拦截继续运行）
+window.addEventListener('error', () => {
+  const tip = document.getElementById('fatalTip');
+  if (tip && window.__errors.length) tip.style.display = 'block';
+});
 </script>
 </head>
 <body>
@@ -72,6 +77,11 @@ window.addEventListener('unhandledrejection', e => logErr('unhandled: ' + (e.rea
         <button class="tab" data-tab="tech">科技</button>
       </div>
       <div id="buildgrid"></div>
+      <div id="superWrap" class="hidden">
+        <button id="superBtn" title="轨道动能炮（V）：全图打击，大范围毁灭伤害">
+          <span class="sw-icon">◉</span> 轨道动能炮 <span id="superCd">就绪</span>
+        </button>
+      </div>
       <div id="minimapWrap"><canvas id="minimap" width="192" height="192"></canvas></div>
       <div id="selinfo"></div>
     </div>
@@ -84,6 +94,7 @@ window.addEventListener('unhandledrejection', e => logErr('unhandled: ' + (e.rea
     <div id="statsGrid"></div>
     <button id="restartBtn">再来一局</button>
   </div>
+  <div id="fatalTip" style="display:none"></div>
   <div id="errlog"></div>
   <script type="module" src="src/main.js"></script>
 </body>

@@ -1,6 +1,6 @@
 // 武器、弹道与伤害结算（含开火来源追踪 → 老兵经验/战报统计）
 
-import { WEAPONS, DAMAGE_MULT } from '../config.js';
+import { WEAPONS, DAMAGE_MULT, ECON } from '../config.js';
 import { dist } from './util.js';
 
 // 单个武装实体（单位/防御塔）的索敌与开火
@@ -8,6 +8,7 @@ export function updateCombat(world, e) {
   const w = WEAPONS[e.weapon];
   if (!w) return;
   if (e.cooldown > 0) e.cooldown--;
+  if (e.cloak > 0) e.cloak--; // 迷彩现形倒计时（狙击手开火/受击后短暂显形）
 
   // 防御塔低电停摆
   if (e.kind === 'building' && world.power[e.side]?.low) return;
@@ -72,9 +73,12 @@ function acquireTarget(world, e, w, range) {
   let best = null, bestD = Infinity;
   for (const t of world.entities.values()) {
     if (t.dead || t.side === e.side) continue;
-    const isAir = !!world.unitDef(t)?.fly;
+    const def = world.unitDef(t);
+    const isAir = !!def?.fly;
     if (isAir && !w.canAir) continue;
     if (!isAir && w.airOnly) continue;
+    // 光学迷彩：隐形单位只有近身（或现形倒计时中）才能被索敌
+    if (def?.stealth && !(t.cloak > 0) && dist(e.x, e.y, t.x, t.y) > ECON.cloak.near) continue;
     const d = dist(e.x, e.y, t.x, t.y);
     if (d <= range && d < bestD) { bestD = d; best = t; }
   }
@@ -94,6 +98,7 @@ function fire(world, e, w, target) {
 
 function fireOne(world, e, w, target, off = 0) {
   if (w.projSpeed > 0) e.recoil = 5; // 炮管后坐（渲染动画用）
+  if (world.unitDef(e)?.stealth) e.cloak = ECON.cloak.reveal; // 开火即现形
   // 枪口焰（渲染层粒子 + 点光源）
   world.fx.push({
     type: 'muzzle',
@@ -166,6 +171,7 @@ export function applyDamage(world, target, raw, dtype, src = null) {
   const ups = world.upgrades?.[target.side];
   target.hp -= (raw * mult) / (ups?.armor || 1); // 复合装甲减伤
   target.flash = 4; // 受击闪白（渲染用）
+  if (world.unitDef(target)?.stealth) target.cloak = Math.max(target.cloak || 0, 45); // 受击显形 1.5s
   world.onDamaged(target, src);
   if (target.hp <= 0) world.killEntity(target, src);
 }

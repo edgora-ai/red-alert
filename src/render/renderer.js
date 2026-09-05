@@ -3,7 +3,7 @@
 
 import * as THREE from '../../vendor/three.module.min.js';
 import { T, UNITS, BUILDINGS } from '../config.js';
-import { buildUnitModel, buildBuildingModel, makeTree, makeTree2, makeRock, makeOre, makeCrate, makeBarrel, makeSandbags, SIDE_COLORS } from './models.js';
+import { buildUnitModel, buildBuildingModel, makeTree, makeTree2, makeRock, makeOre, makeCrate, makeBarrel, makeSandbags, makeWreck, SIDE_COLORS } from './models.js';
 import { PostFX } from './postfx.js';
 import { Particles } from './particles.js';
 
@@ -15,8 +15,10 @@ const TERRAIN = {
   rock: '#55565f',
   water: '#10283e',
 };
-const TOP_Y = { yard: 1.5, power: 1.2, npower: 1.35, refinery: 1.1, barracks: 1.0, factory: 1.2, radar: 1.4, laser: 1.0, sam: 1.0, railgun: 1.0 };
+const TOP_Y = { yard: 1.5, power: 1.2, npower: 1.35, refinery: 1.1, barracks: 1.0, factory: 1.2, radar: 1.4, laser: 1.0, sam: 1.0, railgun: 1.0, repair: 1.0, outpost: 1.4 };
 const FLY_Y = { ghost: 1.05, reaper: 1.45 }; // 与 models.js 保持一致
+// 履带/轮式载具行驶时悬挂晃动
+const TRACKED = new Set(['cheetah', 'tyrant', 'hunter', 'mlrs', 'longsword', 'harvester', 'mcv']);
 
 // 确定性哈希（地形纹理需要可复现的噪声）
 function hash2(x, y, k = 0) {
@@ -86,6 +88,7 @@ export class Renderer {
     this.buildEnvironment();
     this.buildGround();
     this.buildWater();
+    this.buildClouds();
     this.buildFogPlane();
     this.buildDeco();
     this.buildGhost();
@@ -331,6 +334,33 @@ export class Renderer {
     this.scene.add(water);
   }
 
+  // ---------- 云影层（半透明云团缓慢漂移，赋予战场时间流逝感） ----------
+  buildClouds() {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 512;
+    const c = cv.getContext('2d');
+    let seed = 91;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let i = 0; i < 34; i++) {
+      const x = rnd() * 512, y = rnd() * 512, r = 36 + rnd() * 100;
+      const g = c.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, `rgba(255,255,255,${0.32 + rnd() * 0.2})`);
+      g.addColorStop(0.6, `rgba(255,255,255,${0.12 * (1 - rnd() * 0.5)})`);
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      c.fillStyle = g;
+      c.beginPath(); c.arc(x, y, r, 0, 7); c.fill();
+    }
+    const tex = new THREE.CanvasTexture(cv);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.14, depthWrite: false });
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(260, 260), mat);
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(this.world.w / 2, 9, this.world.h / 2);
+    m.renderOrder = 3;
+    this.cloudMat = mat;
+    this.scene.add(m);
+  }
+
   buildFogPlane() {
     const w = this.world;
     this.fogCv = document.createElement('canvas');
@@ -435,9 +465,10 @@ export class Renderer {
       let rec = this.meshMap.get(e.id);
       if (!rec) {
         const group = e.kind === 'unit' ? buildUnitModel(e.type, e.side) : buildBuildingModel(e.type, e.side);
+        const unitTop = { ghost: 1.6, reaper: 1.95, titan: 1.4 }[e.type] ?? 0.65;
         rec = {
           group, kind: e.kind,
-          topY: e.kind === 'building' ? (TOP_Y[e.type] ?? 1) : (e.type === 'ghost' ? 1.6 : 0.65),
+          topY: e.kind === 'building' ? (TOP_Y[e.type] ?? 1) : unitTop,
           bar: null, chev: null, ring: null, lastHp: -1, lastLevel: -1,
           r: e.kind === 'building' ? Math.max(e.w, e.h) * 0.62 : 0.5,
           baseY: FLY_Y[e.type] || 0,
@@ -461,6 +492,50 @@ export class Renderer {
       const gy = FLY_Y[e.type] ? rec.baseY + Math.sin(now / 480 + e.id) * 0.09 : rec.baseY;
       rec.group.position.set(e.x, gy, e.y);
       if (e.kind === 'unit') rec.group.rotation.y = -e.dir;
+
+      // 行走动画：机甲/步兵腿部摆动（hip/knee 关节）
+      if (ud.legs && e.kind === 'unit') {
+        const moving = !!e.path;
+        rec.walk = (rec.walk ?? Math.random() * 6) + (moving ? this.frameDt * (e.type === 'titan' ? 5.2 : 11) : 0);
+        const ease = Math.min(1, dt * 10);
+        ud.legs.forEach((leg, i) => {
+          const ph = rec.walk + i * Math.PI;
+          const hipT = moving ? Math.sin(ph) * (e.type === 'titan' ? 0.45 : 0.6) : 0;
+          const kneeT = moving ? Math.max(0, Math.sin(ph - 0.7)) * 0.7 : 0;
+          leg.hip.rotation.x += (hipT - leg.hip.rotation.x) * ease;
+          if (leg.knee) leg.knee.rotation.x += (kneeT - leg.knee.rotation.x) * ease;
+        });
+      }
+      // 履带/轮式悬挂晃动（行驶时车身小幅起伏）
+      if (TRACKED.has(e.type)) {
+        if (e.path) {
+          const t = now / 1000;
+          rec.group.rotation.z = Math.sin(t * 9 + e.id) * 0.022;
+          rec.group.rotation.x = Math.cos(t * 7.3 + e.id * 2) * 0.015;
+        } else {
+          rec.group.rotation.z *= 0.86;
+          rec.group.rotation.x *= 0.86;
+        }
+      }
+      // 光学迷彩：隐形时整体半透明 + 仅剩轮廓感
+      if (e.kind === 'unit' && e.type === 'sniper') {
+        const cloaked = !(e.cloak > 0);
+        if (cloaked !== rec.cloaked) {
+          rec.cloaked = cloaked;
+          rec.group.traverse(m => {
+            if (!m.isMesh) return;
+            if (cloaked) {
+              if (m.userData._o === undefined) { m.userData._o = m.material.opacity; m.userData._t = m.material.transparent; }
+              m.material.transparent = true;
+              m.material.opacity = 0.38;
+            } else if (m.userData._o !== undefined) {
+              m.material.opacity = m.userData._o;
+              m.material.transparent = m.userData._t;
+              m.userData._o = undefined;
+            }
+          });
+        }
+      }
 
       // 动画部件
       if (ud.rotors) for (const r of ud.rotors) r.rotation.y += dt * 34;
@@ -679,7 +754,74 @@ export class Renderer {
             light.visible = true;
             light.userData.ttl = 0.3;
           }
-          this.addShake(Math.min(0.55, f.r * 0.3));
+          this.addShake(f.shake ?? Math.min(0.55, f.r * 0.3));
+        }
+      } else if (f.type === 'wreck') {
+        // 燃烧残骸：一次性生成炭化车体 + 持续烟柱火舌 + 末期淡出
+        if (!f._mesh) {
+          f._mesh = makeWreck(f.heavy);
+          f._mesh.position.set(f.x, 0, f.y);
+          f._mesh.rotation.y = Math.random() * Math.PI * 2;
+          f._mats = [];
+          f._mesh.traverse(m => { if (m.isMesh) { m.material.transparent = true; f._mats.push(m.material); } });
+          this.scene.add(f._mesh);
+        }
+        if ((f.smokeT = (f.smokeT ?? 0) - this.frameDt) <= 0) {
+          f.smokeT = 0.16 + Math.random() * 0.15;
+          this.particles.spawn({
+            layer: 'smoke', x: f.x + (Math.random() - 0.5) * 0.3, y: 0.35, z: f.y + (Math.random() - 0.5) * 0.3,
+            vx: (Math.random() - 0.5) * 0.25, vy: 0.9 + Math.random() * 0.5, vz: (Math.random() - 0.5) * 0.25,
+            life: 1.2 + Math.random() * 0.5, size: 0.2, sizeEnd: 0.85, col0: 0x3a3733, col1: 0x191715, alpha: 0.4, grav: -0.3,
+          });
+          this.particles.spawn({
+            x: f.x, y: 0.32, z: f.y, vx: 0, vy: 0.7, vz: 0,
+            life: 0.28, size: 0.15, sizeEnd: 0.3, col0: 0xffa040, col1: 0xff3300, alpha: 0.75, grav: 0.6,
+          });
+        }
+        if (f.ttl < 120) {
+          const o = Math.max(0, f.ttl / 120);
+          for (const m of f._mats) m.opacity = o;
+        }
+      } else if (f.type === 'superAim') {
+        // 轨道动能炮：天顶充能光柱 + 地面警示环（renderOrder 高于迷雾层——天基武器俯瞰全场）
+        if (!f._mesh) {
+          const g = new THREE.Group();
+          const beam = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.55, 1.7, 70, 16, 1, true),
+            new THREE.MeshBasicMaterial({ color: 0xbef2ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }),
+          );
+          beam.position.y = 35;
+          beam.renderOrder = 5;
+          g.add(beam);
+          const ring = new THREE.Mesh(
+            new THREE.RingGeometry(2.7, 3.1, 40),
+            new THREE.MeshBasicMaterial({ color: 0xff6a5c, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false, fog: false }),
+          );
+          ring.rotation.x = -Math.PI / 2;
+          ring.position.y = 0.1;
+          ring.renderOrder = 5;
+          g.add(ring);
+          g.position.set(f.x, 0, f.y);
+          g.renderOrder = 5;
+          f._mesh = g; f._beam = beam; f._ring = ring;
+          this.scene.add(g);
+        }
+        const k = 1 - f.ttl / f.max;
+        f._beam.material.opacity = Math.min(0.55, Math.max(0, k - 0.12) * 0.85);
+        f._beam.scale.setScalar(0.4 + k * 0.9);
+        f._ring.scale.setScalar(1 + Math.sin(k * Math.PI * 4) * 0.06);
+        f._ring.material.opacity = 0.55 + 0.35 * Math.sin(k * 22);
+      } else if (f.type === 'repair') {
+        if (!f._done) {
+          f._done = true;
+          for (let i = 0; i < 3; i++) {
+            const a = Math.random() * Math.PI * 2;
+            this.particles.spawn({
+              x: f.x + Math.cos(a) * 0.25, y: 0.4 + Math.random() * 0.3, z: f.y + Math.sin(a) * 0.25,
+              vx: 0, vy: 0.8, vz: 0, life: 0.3, size: 0.07, sizeEnd: 0.02,
+              col0: 0x7df9ff, col1: 0x2a8f9f, alpha: 0.9, grav: 0.4,
+            });
+          }
         }
       } else if (f.type === 'muzzle') {
         if (!f._done) {
@@ -855,6 +997,11 @@ export class Renderer {
     // 天空穹顶跟随相机
     this.sky.position.copy(this.cam3.position);
     if (this.waterMat) this.waterMat.uniforms.uTime.value += this.frameDt;
+    // 云影缓慢漂移
+    if (this.cloudMat) {
+      this.cloudMat.map.offset.x += this.frameDt * 0.0035;
+      this.cloudMat.map.offset.y += this.frameDt * 0.0012;
+    }
   }
 
   screenToTile(px, py) {
@@ -882,9 +1029,13 @@ export class Renderer {
       this.iconScene.add(rim);
       this.iconCam = new THREE.PerspectiveCamera(40, 128 / 96, 0.1, 50);
     }
-    const def = UNITS[item] || BUILDINGS[item];
-    const model = UNITS[item] ? buildUnitModel(item, 'player') : buildBuildingModel(item, 'player');
-    const span = UNITS[item] ? 1.1 : Math.max(def.w, def.h) * 0.85 + 0.4;
+    // 科技研发没有专属模型：借用代表建筑出图
+    const UPGRADE_ICON = { ap: 'radar', composite: 'radar', engine: 'radar', mining: 'refinery', super: 'npower' };
+    const isUnit = !!UNITS[item];
+    const modelItem = isUnit ? item : (BUILDINGS[item] ? item : (UPGRADE_ICON[item] || 'radar'));
+    const def = UNITS[modelItem] || BUILDINGS[modelItem];
+    const model = isUnit ? buildUnitModel(modelItem, 'player') : buildBuildingModel(modelItem, 'player');
+    const span = isUnit ? 1.1 : Math.max(def.w, def.h) * 0.85 + 0.4;
     const d = span * 2.1;
     this.iconCam.position.set(d * 0.75, d * 0.62, d * 0.75);
     this.iconCam.lookAt(0, span * 0.2, 0);

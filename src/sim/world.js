@@ -6,7 +6,7 @@ import {
 import { mulberry32, dist, clamp } from './util.js';
 import { findPath, nearestOpen } from './pathfind.js';
 import { updateHarvester, updatePower } from './economy.js';
-import { updateCombat, updateProjectiles } from './combat.js';
+import { updateCombat, updateProjectiles, splashDamage } from './combat.js';
 
 let nextId = 1;
 
@@ -38,6 +38,8 @@ export class World {
     this.tickCount = 0;
     this.winner = null;
     this.rng = mulberry32(seed);
+    this.superCd = { player: 0, enemy: 0 }; // 超级武器冷却（tick）
+    this.strikes = [];                      // 进行中的轨道打击 {x, y, t}
   }
 
   // ---------- 基础查询 ----------
@@ -110,7 +112,7 @@ export class World {
     for (let dy = 0; dy < def.h; dy++)
       for (let dx = 0; dx < def.w; dx++)
         this.bgrid[this.idx(tx + dx, ty + dy)] = b.id;
-    this.stats[side].built++;
+    if (this.stats[side]) this.stats[side].built++;
     return b;
   }
 
@@ -156,6 +158,13 @@ export class World {
     const r = e.kind === 'building' ? Math.max(e.w, e.h) * 0.8 : 0.6;
     this.fx.push({ type: 'boom', x: e.x, y: e.y, r, ttl: 16, max: 16 });
     this.events.push({ type: 'boom', big: e.kind === 'building', x: e.x, y: e.y });
+    // 地面载具留下燃烧残骸（渲染层消费）
+    if (e.kind === 'unit' && !UNITS[e.type]?.fly && !UNITS[e.type]?.inf) {
+      this.fx.push({
+        type: 'wreck', x: e.x, y: e.y, ttl: 600, max: 600,
+        heavy: e.type === 'cheetah' || e.type === 'tyrant' || e.type === 'titan',
+      });
+    }
     // 战报与经验
     if (e.kind === 'unit') this.stats[e.side].lost++;
     if (killer && !killer.dead && killer.side !== e.side) {
@@ -181,6 +190,7 @@ export class World {
       case 'stop': return this.cmdStop(side, cmd.ids);
       case 'rally': return this.cmdRally(side, cmd.id, cmd.x, cmd.y);
       case 'sell': return this.cmdSell(side, cmd.id);
+      case 'superstrike': return this.cmdSuper(side, cmd.x, cmd.y);
     }
   }
 
@@ -387,6 +397,61 @@ export class World {
     return true;
   }
 
+  // 超级武器「轨道动能炮」：研发授权后可全图打击，预警后落地毁灭伤害
+  cmdSuper(side, x, y) {
+    if (!this.upgrades[side]?.owned.has('super')) return false;
+    if ((this.superCd[side] ?? 0) > 0) {
+      if (side === 'player') { this.messages.push({ side, text: '轨道炮充能中', ttl: 60 }); this.events.push({ type: 'error' }); }
+      return false;
+    }
+    x = clamp(x, 1, this.w - 1); y = clamp(y, 1, this.h - 1);
+    this.superCd[side] = ECON.super.cooldown;
+    this.fx.push({ type: 'superAim', x, y, ttl: ECON.super.delay * 2, max: ECON.super.delay * 2, side });
+    this.strikes.push({ x, y, t: ECON.super.delay });
+    this.events.push({ type: 'superLaunch', x, y });
+    if (side === 'player') this.messages.push({ side, text: '轨道动能炮已锁定目标', ttl: 90 });
+    return true;
+  }
+
+  updateStrikes() {
+    for (let i = this.strikes.length - 1; i >= 0; i--) {
+      const s = this.strikes[i];
+      if (--s.t > 0) continue;
+      this.strikes.splice(i, 1);
+      splashDamage(this, s.x, s.y, { dmg: ECON.super.dmg, dtype: 'shell', splash: ECON.super.radius }, null);
+      this.fx.push({ type: 'boom', x: s.x, y: s.y, r: ECON.super.radius, ttl: 20, max: 20, shake: 1 });
+      this.events.push({ type: 'superHit', x: s.x, y: s.y });
+    }
+  }
+
+  // 修理厂：范围内友军地面载具持续维修（按耐久扣费）
+  updateRepairPads() {
+    for (const b of this.entities.values()) {
+      if (b.kind !== 'building' || b.dead || !BUILDINGS[b.type].repair) continue;
+      for (const u of this.entities.values()) {
+        if (u.kind !== 'unit' || u.dead || u.side !== b.side || u.hp >= u.maxHp) continue;
+        const def = UNITS[u.type];
+        if (def.fly || def.inf) continue;
+        if (dist(u.x, u.y, b.x, b.y) > ECON.repair.radius) continue;
+        const heal = Math.min(ECON.repair.rate / TICK_RATE, u.maxHp - u.hp, this.credits[b.side] / ECON.repair.costPerHp);
+        if (heal <= 0) continue;
+        u.hp += heal;
+        this.credits[b.side] -= heal * ECON.repair.costPerHp;
+        if (this.tickCount % 8 === 0) this.fx.push({ type: 'repair', x: u.x, y: u.y, ttl: 6, max: 6 });
+      }
+    }
+  }
+
+  // 中立补给站持续产出资金
+  updateNeutralIncome() {
+    for (const b of this.entities.values()) {
+      if (b.kind !== 'building' || b.dead || b.type !== 'outpost') continue;
+      if (b.side !== 'player' && b.side !== 'enemy') continue;
+      this.credits[b.side] += ECON.neutral.income;
+      this.events.push({ type: 'deposit', x: b.x, y: b.y });
+    }
+  }
+
   // ---------- 寻路/移动 ----------
   setPath(u, x, y, snap = true) {
     const def = UNITS[u.type];
@@ -469,9 +534,9 @@ export class World {
     if (b.progress < total) return;
 
     if (UPGRADES[item]) {
-      // 科技研发完成：全局加成生效
+      // 科技研发完成：全局加成生效（超武授权走 owned 集合，无倍率）
       const up = UPGRADES[item];
-      this.upgrades[b.side][up.effect] = up.value;
+      if (up.effect !== 'super') this.upgrades[b.side][up.effect] = up.value;
       this.upgrades[b.side].owned.add(item);
       b.queue.shift(); b.progress = 0;
       if (b.side === 'player') {
@@ -507,10 +572,13 @@ export class World {
       return;
     }
     u.path = null;
-    if (t.hp < t.maxHp * 0.5) {
+    // 中立建筑可直接占领；敌方建筑需先打残（<50%）
+    if (t.side === 'neutral' || t.hp < t.maxHp * 0.5) {
+      const wasNeutral = t.side === 'neutral';
       t.side = u.side;
       t.queue = []; t.progress = 0;
-      this.messages.push({ side: u.side, text: `已占领敌方${BUILDINGS[t.type].name}！`, ttl: 150 });
+      const label = BUILDINGS[t.type].name;
+      this.messages.push({ side: u.side, text: `${wasNeutral ? '已占领中立' : '已占领敌方'}${label}！`, ttl: 150 });
       this.events.push({ type: 'capture' });
       this.entities.delete(u.id);
     } else {
@@ -577,6 +645,10 @@ export class World {
     }
 
     updateProjectiles(this);
+    this.updateStrikes();
+    this.updateRepairPads();
+    if (this.tickCount % ECON.neutral.period === 0) this.updateNeutralIncome();
+    for (const s of ['player', 'enemy']) if (this.superCd[s] > 0) this.superCd[s]--;
 
     // 后台标签/无头快进时渲染层不消费 fx，限制容量防堆积
     if (this.fx.length > 500) this.fx.splice(0, this.fx.length - 500);
@@ -625,6 +697,11 @@ export function createSkirmish(seed = 20260801) {
   // 中场护卫（让玩家前期有仗可打）
   w.addUnit('enemy', 'tyrant', 60.5, 44.5);
   w.addUnit('enemy', 'tyrant', 36.5, 51.5);
+  // 中立补给站：双方工程师争夺的经济要点（紧邻中场矿区）
+  clearRect(w, 36, 42, 3, 3);
+  clearRect(w, 58, 41, 3, 3);
+  w.addBuilding('neutral', 'outpost', 37, 43);
+  w.addBuilding('neutral', 'outpost', 59, 42);
 
   w.updateFog();
   return w;

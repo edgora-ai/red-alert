@@ -4,10 +4,10 @@
 import * as THREE from '../../vendor/three.module.min.js';
 import { metalPanel, concrete, camo, hazard, planks } from './textures.js';
 
-// 阵营涂装：玩家藏青钢 / 红军锈红钢，炮塔顶部与细节用阵营亮色
-export const SIDE_COLORS = { player: '#4da3ff', enemy: '#ff5545' };
-const HULL = { player: 0x3a5f82, enemy: 0x7d3d33 };
-const ACCENT = { player: 0x4da3ff, enemy: 0xff5545 };
+// 阵营涂装：玩家藏青钢 / 红军锈红钢 / 中立沙金，炮塔顶部与细节用阵营亮色
+export const SIDE_COLORS = { player: '#4da3ff', enemy: '#ff5545', neutral: '#d8c46a' };
+const HULL = { player: 0x3a5f82, enemy: 0x7d3d33, neutral: 0x8a7a5c };
+const ACCENT = { player: 0x4da3ff, enemy: 0xff5545, neutral: 0xd8c46a };
 const DARK = 0x22262b;   // 履带/轮胎
 const METAL = 0x3a4048;  // 炮管等深色金属
 
@@ -299,6 +299,45 @@ function mcv(side) {
   return g;
 }
 
+// 泰坦重型机甲：双足行走机构（髋/膝关节摆动）+ 重装甲躯干 + 双联电磁轨道炮 + 发光反应核心
+function titan(side) {
+  const h = HULL[side], a = ACCENT[side];
+  const g = new THREE.Group();
+  const legs = [];
+  for (const s of [-1, 1]) {
+    const hip = new THREE.Group(); hip.position.set(-0.05, 0.66, s * 0.24);
+    hip.add(cyl(0.095, 0.095, 0.14, 0x2c343e, 0.02, 0, 0, { rx: Math.PI / 2 }));  // 髋关节
+    hip.add(box(0.2, 0.28, 0.15, 0x3c444e, 0.02, -0.17, 0));                       // 大腿液压杆
+    hip.add(box(0.14, 0.06, 0.17, a, 0.02, -0.05, 0, { em: a, emi: 0.3 }));        // 大腿识别带
+    const knee = new THREE.Group(); knee.position.set(0.03, -0.33, 0);
+    knee.add(cyl(0.075, 0.075, 0.12, 0x2c343e, 0, 0, 0, { rx: Math.PI / 2 }));     // 膝关节
+    knee.add(box(0.17, 0.26, 0.13, 0x333a44, 0, -0.14, 0));                        // 小腿
+    knee.add(cyl(0.035, 0.035, 0.2, 0x1a1e24, 0.06, -0.08, s * 0.07, { rx: -0.4 })); // 踝部液压
+    knee.add(box(0.28, 0.06, 0.2, DARK, 0.03, -0.3, 0));                           // 防滑脚掌
+    hip.add(knee);
+    g.add(hip);
+    legs.push({ hip, knee });
+  }
+  g.userData.legs = legs;
+  const tur = new THREE.Group(); tur.position.set(0, 0.84, 0);
+  tur.add(box(0.52, 0.32, 0.46, h, 0, 0.06, 0));                 // 主装甲箱体
+  tur.add(box(0.16, 0.13, 0.28, 0x1a1e24, 0.27, 0.1, 0));        // 装甲座舱
+  tur.add(box(0.04, 0.06, 0.2, 0x7df9ff, 0.3, 0.1, 0, { em: 0x7df9ff, emi: 1.2 })); // 座舱传感缝
+  tur.add(box(0.22, 0.04, 0.3, a, -0.22, 0.16, 0, { em: a, emi: 0.35 }));  // 阵营识别带
+  for (const s of [-1, 1]) tur.add(box(0.18, 0.14, 0.13, 0x3c444e, -0.12, 0.28, s * 0.26)); // 肩部导弹巢
+  const gun1 = barrel(0.5, 0.032, 0.32, 0.05, -0.14);            // 双联电磁轨道炮
+  const gun2 = barrel(0.5, 0.032, 0.32, 0.05, 0.14);
+  tur.add(gun1); tur.add(gun2);
+  tur.userData.barrels = [gun1, gun2];
+  const core = oct(0.09, 0x7df9ff, 0.08, 0.05, 0, { em: 0x7df9ff, emi: 1.5 }); // 反应核心
+  tur.add(core);
+  tur.add(antenna(-0.28, 0.28, -0.18, 0.36));
+  g.add(tur);
+  g.userData.turret = tur;
+  g.userData.prism = core;
+  return g;
+}
+
 // 幽灵武装无人机：四旋翼 + 机腹光电球
 function ghost(side) {
   const a = ACCENT[side];
@@ -354,10 +393,19 @@ function reaper(side) {
 function infantry(type, side) {
   const h = HULL[side];
   const g = new THREE.Group();
-  g.add(box(0.1, 0.12, 0.09, DARK, 0, 0.06, 0));                  // 腿
-  g.add(cyl(0.06, 0.075, 0.14, type === 'sniper' ? 0x2e3a2e : h, 0, 0.18, 0)); // 作战服（狙击手吉利布色）
+  // 双腿（行走摆动：渲染层驱动 hip 关节）
+  const legs = [];
+  for (const s of [-1, 1]) {
+    const hip = new THREE.Group();
+    hip.position.set(0, 0.13, s * 0.032);
+    hip.add(box(0.045, 0.13, 0.05, DARK, 0, -0.065, 0));
+    g.add(hip);
+    legs.push({ hip });
+  }
+  g.userData.legs = legs;
+  g.add(cyl(0.06, 0.075, 0.14, type === 'sniper' ? 0x2e3a2e : h, 0, 0.19, 0)); // 作战服（狙击手吉利布色）
   g.add(sph(0.055, type === 'engineer' ? 0xffd866 : type === 'sniper' ? 0x2e3a2e : h, 0, 0.3, 0)); // 头盔
-  const yaw = new THREE.Group(); yaw.position.y = 0.2;
+  const yaw = new THREE.Group(); yaw.position.y = 0.21;
   if (type === 'rocket') yaw.add(cyl(0.03, 0.03, 0.26, 0x555f6a, 0.06, 0.06, 0, { rz: -Math.PI / 2.4 })); // 肩扛火箭筒
   else if (type === 'sniper') {                                   // 反器材狙击枪（长枪管+瞄具+两脚架）
     yaw.add(box(0.34, 0.02, 0.02, 0x1a1e24, 0.17, 0.03, 0));
@@ -452,6 +500,42 @@ const BUILDING_BUILDERS = {
     dish.rotation.z = -0.5;
     g.add(dish);
     g.userData.spin = { obj: dish, speed: 1.2 };
+    return g;
+  },
+  repair(side) {
+    const g = slab(2, 2, side);
+    // 四角立柱 + 平顶棚（开放式维修车间）
+    for (const [px, pz] of [[-0.8, -0.8], [0.8, -0.8], [-0.8, 0.8], [0.8, 0.8]])
+      g.add(box(0.15, 0.52, 0.15, 0x3c444e, px, 0.33, pz));
+    g.add(box(1.92, 0.1, 1.92, 0xffffff, 0, 0.64, 0, { map: tex(skin('metal'), 2, 2) }));
+    g.add(box(1.94, 0.04, 0.14, 0xd8a013, 0, 0.62, 0.9));          // 檐口警示条
+    g.add(box(0.14, 0.04, 1.94, 0xd8a013, 0.9, 0.62, 0));
+    // 中央维修机械臂：旋转 + 悬浮焊头（渲染层 bob）
+    const arm = new THREE.Group(); arm.position.set(0, 0.7, 0);
+    arm.add(cyl(0.06, 0.09, 0.26, 0x8a939c, 0, 0.13, 0));
+    const head = new THREE.Group();
+    head.add(box(0.13, 0.09, 0.13, 0x2c343e, 0, -0.08, 0));
+    head.add(cyl(0.032, 0.032, 0.06, 0x7df9ff, 0, -0.16, 0, { em: 0x7df9ff, emi: 2.2 })); // 等离子焊头
+    arm.add(head);
+    g.add(arm);
+    // 待修工具箱与备用履带
+    g.add(box(0.3, 0.2, 0.24, 0xffffff, -0.62, 0.17, 0.55, { map: tex(skin('haz'), 0.8, 0.5) }));
+    g.add(cyl(0.09, 0.09, 0.06, 0x22262b, 0.55, 0.09, 0.6, { rx: Math.PI / 2 }));
+    g.userData.spin = { obj: arm, speed: 0.55 };
+    g.userData.bob = { obj: head, y: 0 };
+    return g;
+  },
+  // 中立补给站：沙金涂装岗楼 + 库房 + 补给箱（工程师占领后持续产出资金）
+  outpost(side) {
+    const g = slab(2, 2, side);
+    g.add(cyl(0.15, 0.19, 0.92, 0x8a7a5c, -0.55, 0.51, -0.55));    // 岗楼
+    g.add(box(0.46, 0.3, 0.46, 0x9a8a68, -0.55, 1.08, -0.55));     // 瞭望舱
+    g.add(box(0.52, 0.05, 0.52, 0x6a5c42, -0.55, 1.27, -0.55));    // 顶檐
+    g.add(box(1.2, 0.4, 0.8, 0xffffff, 0.25, 0.28, 0.25, { map: tex(skin('conc'), 1.4, 1) })); // 主库房
+    g.add(box(1.26, 0.05, 0.86, 0x6a5c42, 0.25, 0.51, 0.25));
+    for (const [cx, cz, s] of [[-0.3, 0.62, 1], [0.02, 0.58, 0.85], [-0.16, 0.36, 0.7]])
+      g.add(box(0.3 * s, 0.22 * s, 0.26 * s, 0xffffff, cx, 0.11 * s + 0.04, cz, { map: tex(skin('planks'), 1, 1) }));
+    g.add(antenna(0.72, 0.55, -0.62, 0.5));
     return g;
   },
   laser(side) {
@@ -556,9 +640,32 @@ export function makeOre() {
   return g;
 }
 
+// 燃烧残骸（载具阵亡遗留）：炭化车体 + 炸飞炮塔/歪斜驾驶室 + 烧红裂口
+export function makeWreck(heavy) {
+  const g = new THREE.Group();
+  const char = (w, h, d, x, y, z) => box(w, h, d, 0x1d2024, x, y, z);
+  if (heavy) {
+    g.add(char(0.82, 0.17, 0.46, 0, 0.12, 0));
+    const tur = char(0.36, 0.11, 0.36, -0.12, 0.25, 0.03);
+    tur.rotation.z = 0.16; tur.rotation.y = 0.5; g.add(tur);      // 掀翻的炮塔
+    const bend = char(0.5, 0.03, 0.03, 0.34, 0.2, 0.08);
+    bend.rotation.z = 0.5; bend.rotation.y = 0.4; g.add(bend);    // 弯折炮管
+  } else {
+    g.add(char(0.7, 0.13, 0.42, 0, 0.1, 0));
+    const cab = char(0.2, 0.17, 0.34, 0.3, 0.2, 0);
+    cab.rotation.z = -0.22; g.add(cab);                           // 歪掉的驾驶室
+  }
+  for (let i = 0; i < 3; i++) {                                   // 烧红裂口（余烬发光）
+    const e = box(0.1, 0.04, 0.06, 0xff5a20, (Math.random() - 0.5) * 0.5, 0.17 + Math.random() * 0.05, (Math.random() - 0.5) * 0.3, { em: 0xff5a20, emi: 1.6 });
+    e.rotation.y = Math.random() * 3;
+    g.add(e);
+  }
+  return g;
+}
+
 // ================= 入口 =================
 
-const UNIT_BUILDERS = { cheetah, tyrant, hunter, mlrs, longsword, aurora, reaper, harvester, mcv, ghost };
+const UNIT_BUILDERS = { cheetah, tyrant, hunter, mlrs, longsword, aurora, reaper, harvester, mcv, ghost, titan };
 
 // 飞行单位悬停高度
 const FLY_Y = { ghost: 1.05, reaper: 1.45 };

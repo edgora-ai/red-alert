@@ -40,7 +40,19 @@ export class UI {
       gameState: document.getElementById('gameState'),
       diffBadge: document.getElementById('diffBadge'),
       settings: document.getElementById('settings'),
+      superWrap: document.getElementById('superWrap'),
+      superBtn: document.getElementById('superBtn'),
+      superCd: document.getElementById('superCd'),
     };
+
+    // 超级武器按钮（旧缓存页面可能没有该元素：缺失时跳过，不影响其他功能）
+    if (this.el.superBtn) {
+      this.el.superBtn.onclick = () => {
+        if ((this.world.superCd.player ?? 0) > 0) return;
+        this.game.userPlay = true;
+        this.superCb?.();
+      };
+    }
 
     document.querySelectorAll('.tab').forEach(btn => {
       btn.onclick = () => this.setTab(btn.dataset.tab);
@@ -73,6 +85,9 @@ export class UI {
     document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
     this.rebuildGrid();
   }
+
+  // main 注入：点击超武按钮 → 进入瞄准模式
+  bindSuper(cb) { this.superCb = cb; }
 
   rebuildGrid() {
     this.el.grid.innerHTML = '';
@@ -119,6 +134,7 @@ export class UI {
       rows.push(`耐久 ${def.hp}`);
       if (def.power) rows.push(def.power > 0 ? `供电 +${def.power}` : `耗电 ${-def.power}`);
       if (w) rows.push(`火力 ${w.dmg} / ${w.cooldown / 30}s · 射程 ${w.range}${w.canAir ? ' · 可对空' : ''}`);
+      if (def.repair) rows.push('自动维修范围内载具（按耐久扣费）');
       if (def.produces) rows.push('生产：' + def.produces.filter(t => BUILDINGS[t]).map(t => BUILDINGS[t].name).join('、'));
     }
     if (def.prereq) rows.push(`<span class="tt-sub">前置：${def.prereq.map(t => BUILDINGS[t].name).join('/')}</span>`);
@@ -172,6 +188,17 @@ export class UI {
       gs.textContent = `⏩ ${this.game.SPEEDS[this.game.speedIdx]}x`;
       gs.className = 'badge show';
     } else gs.className = 'badge';
+
+    // 超级武器按钮：研发授权后显示，冷却倒数（元素缺失时静默跳过）
+    if (this.el.superWrap && this.el.superBtn && this.el.superCd) {
+      const supReady = w.upgrades.player.owned.has('super');
+      this.el.superWrap.classList.toggle('hidden', !supReady);
+      if (supReady) {
+        const cd = w.superCd.player ?? 0;
+        this.el.superCd.textContent = cd > 0 ? `${Math.ceil(cd / 30)}s` : '就绪 · V';
+        this.el.superBtn.classList.toggle('ready', cd <= 0);
+      }
+    }
 
     // 建造按钮状态
     const owned = new Set(w.buildingsOf('player').map(b => b.type));

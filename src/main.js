@@ -1,4 +1,5 @@
 // 启动与主循环：固定步长 tick + 每帧渲染；开始界面选难度、P 暂停、+/- 变速
+// 健壮性：开始按钮最先接线；子系统/帧循环异常全部可见化，绝不静默冻结
 
 import { TICK_RATE } from './config.js';
 import { createSkirmish } from './sim/world.js';
@@ -31,91 +32,141 @@ const game = {
   userPlay: false, // 用户亲自下过命令（演示模式据此停止接管玩家侧）
   alertTtl: 0, vignette: 0,
 };
-const renderer = new Renderer(canvas, world, camera, game);
-const minimap = new Minimap(document.getElementById('minimap'), world, camera, game);
-const sound = new Sound();
-const input = new Input(game, canvas, world, camera, sound, renderer);
-const ui = new UI(game, world, sound, renderer);
 
-window.addEventListener('resize', () => renderer.resize());
+// 开始界面最先接线：即使后续子系统初始化失败，入口也永远可点
+function showFatal(msg) {
+  const tip = document.getElementById('fatalTip');
+  if (tip) { tip.textContent = `⚠ 脚本异常：${msg}（已拦截，游戏继续运行）`; tip.style.display = 'block'; }
+}
+let renderer = null, input = null, ui = null, sound = null, minimap = null;
+try {
+  renderer = new Renderer(canvas, world, camera, game);
+} catch (e) { showFatal(e.message); console.error(e); }
 
-// 演示/自测模式：?demo=1 时自动建造并发起进攻
-if (isDemo) {
-  game.started = true;
-  document.getElementById('start')?.classList.add('hidden');
-  import('./demo.js').then(m => m.startDemo({ world, game, camera, ai }));
-} else {
-  // 开始界面：选难度 → 开战（同时解锁 WebAudio）
-  const startEl = document.getElementById('start');
-  const startBtn = document.getElementById('startBtn');
-  document.querySelectorAll('.diff-btn').forEach(btn => {
-    btn.onclick = () => {
-      document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-    };
-  });
-  startBtn.onclick = () => {
-    sound.unlock();
+// 开始界面：选难度 → 开战（同时解锁 WebAudio）
+const startEl = document.getElementById('start');
+const startBtn = document.getElementById('startBtn');
+document.querySelectorAll('.diff-btn').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  };
+});
+startBtn.onclick = () => {
+  try {
+    sound?.unlock();
     // 难度在开局前选定：重建 Commander 应用难度参数
     const diffSel = document.querySelector('.diff-btn.active')?.dataset.diff || 'normal';
     if (diffSel !== diff) Object.assign(ai, new Commander(world, 'enemy', diffSel));
     game.diff = diffSel;
-    ui.el.diffBadge.textContent = `AI · ${ai.diff.name}`;
+    if (ui) ui.el.diffBadge.textContent = `AI · ${ai.diff.name}`;
     startEl.classList.add('hidden');
     game.started = true;
-  };
-  // 无交互环境（自动化）直接开战
-  if (isHeadless) startBtn.click();
+  } catch (e) { showFatal(e.message); console.error(e); }
+};
+// 无交互环境（自动化）直接开战
+if (isHeadless) startBtn.click();
+
+try {
+  minimap = new Minimap(document.getElementById('minimap'), world, camera, game);
+  sound = new Sound();
+  input = new Input(game, canvas, world, camera, sound, renderer);
+  ui = new UI(game, world, sound, renderer);
+  ui.bindSuper(() => input.startSuperTarget());
+  window.addEventListener('resize', () => renderer?.resize());
+} catch (e) {
+  showFatal(e.message);
+  console.error(e);
 }
+boot();
 
-let last = performance.now();
-let acc = 0;
-
-function frame(now) {
-  requestAnimationFrame(frame);
-  let dt = (now - last) / 1000;
-  last = now;
-  if (dt > 0.25) dt = 0.25; // 切后台回来不暴冲
-
-  if (game.started && !game.paused) {
-    acc += dt * game.SPEEDS[game.speedIdx];
-    const step = 1 / TICK_RATE;
-    let n = 0;
-    while (acc >= step && n++ < 12) { world.tick(); ai.tick(); acc -= step; }
-    if (acc > step * 12) acc = 0;
+function boot() {
+  // 演示/自测模式：?demo=1 时自动建造并发起进攻
+  if (isDemo) {
+    game.started = true;
+    startEl?.classList.add('hidden');
+    import('./demo.js').then(m => m.startDemo({ world, game, camera, ai })).catch(e => showFatal(e.message));
   }
 
-  input.updateCamera(dt);
+  let last = performance.now();
+  let acc = 0;
+  let lastFrame = last;
+  let autoPaused = false;
 
-  // 清理已阵亡的选中实体
-  for (const id of game.selection) {
-    if (!world.entities.has(id)) game.selection.delete(id);
-  }
+  function frame(now) {
+    requestAnimationFrame(frame);
+    lastFrame = now;
+    try {
+      let dt = (now - last) / 1000;
+      last = now;
+      if (dt > 0.25) dt = 0.25; // 切后台回来不暴冲
 
-  renderer.render();
-  minimap.update(renderer);
-  ui.update();
+      if (game.started && !game.paused) {
+        acc += dt * game.SPEEDS[game.speedIdx];
+        const step = 1 / TICK_RATE;
+        let n = 0;
+        while (acc >= step && n++ < 12) { world.tick(); ai.tick(); acc -= step; }
+        if (acc > step * 12) acc = 0;
+      }
 
-  // 音频：消费事件（空间化）+ 每帧烈度/配乐驱动
-  sound.drain(world.events, camera);
-  sound.update(dt);
-  for (const e of world.events) {
-    if (e.type === 'underAttack') {
-      game.alertTtl = 2.2;
-      game.vignette = Math.min(1, game.vignette + 0.55);
+      input?.updateCamera(dt);
+
+      // 清理已阵亡的选中实体
+      for (const id of game.selection) {
+        if (!world.entities.has(id)) game.selection.delete(id);
+      }
+
+      renderer?.render();
+      minimap?.update(renderer);
+      ui?.update();
+
+      // 音频：消费事件（空间化）+ 每帧烈度/配乐驱动
+      if (sound) {
+        sound.drain(world.events, camera);
+        sound.update(dt);
+      }
+      for (const e of world.events) {
+        if (e.type === 'underAttack') {
+          game.alertTtl = 2.2;
+          game.vignette = Math.min(1, game.vignette + 0.55);
+        }
+      }
+      world.events.length = 0;
+
+      // 受击红晕 + 警报横幅衰减
+      if (game.alertTtl > 0) game.alertTtl -= dt;
+      if (game.vignette > 0) game.vignette = Math.max(0, game.vignette - dt * 1.6);
+      const vigEl = document.getElementById('vignette');
+      if (vigEl) vigEl.style.opacity = game.vignette.toFixed(2);
+    } catch (e) {
+      // 帧循环永不静默冻结：拦截异常、可见提示、下一帧继续
+      showFatal(e.message);
+      console.error(e);
     }
   }
-  world.events.length = 0;
 
-  // 受击红晕 + 警报横幅衰减
-  if (game.alertTtl > 0) game.alertTtl -= dt;
-  if (game.vignette > 0) game.vignette = Math.max(0, game.vignette - dt * 1.6);
-  const vigEl = document.getElementById('vignette');
-  if (vigEl) vigEl.style.opacity = game.vignette.toFixed(2);
+  renderer?.resize();
+  requestAnimationFrame(frame);
+
+  // rAF 饥饿兜底：窗口被其他窗口完全遮挡（visibilityState 仍为 visible）时，
+  // Chromium 停发 requestAnimationFrame，游戏会整体假死（点按钮扣钱但一切无响应）。
+  // 此时用定时器接力驱动同一帧函数，保证遮挡状态下也持续运行。
+  setInterval(() => {
+    if (document.visibilityState !== 'visible') return;
+    if (performance.now() - lastFrame < 400) return;
+    frame(performance.now());
+  }, 80);
+
+  // 切到后台标签自动暂停（避免回来时基地被 AI 偷家），回来自动恢复
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      if (game.started && !game.paused) { game.paused = true; autoPaused = true; }
+    } else if (autoPaused) {
+      game.paused = false;
+      autoPaused = false;
+    }
+  });
 }
-
-renderer.resize();
-requestAnimationFrame(frame);
 
 // 调试句柄（自动化测试/排查用）
 window.__dbg = { world, game, camera, renderer, input, sound, ui, ai };

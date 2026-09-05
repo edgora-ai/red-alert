@@ -24,6 +24,16 @@ html, body {
   user-select: none;
 }
 
+/* 脚本异常可见提示条（常驻，直到刷新） */
+#fatalTip {
+  position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%);
+  z-index: 99; max-width: 80vw;
+  padding: 8px 18px; font-size: 12px; letter-spacing: 0.5px;
+  color: #ffb0a8; background: #2a0e0ecc;
+  border: 1px solid #ff5545aa; border-radius: 4px;
+  pointer-events: none;
+}
+
 /* ============ 开始界面 ============ */
 #start {
   position: fixed; inset: 0; z-index: 50;
@@ -128,6 +138,7 @@ html, body {
 #canvasWrap { flex: 1; position: relative; min-width: 0; }
 #game { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
 #game.cursor-attack { cursor: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28'><circle cx='14' cy='14' r='9' fill='none' stroke='%23ff5545' stroke-width='2.5'/><path d='M14 1v7M14 20v7M1 14h7M20 14h7' stroke='%23ff5545' stroke-width='2.5'/></svg>") 14 14, crosshair; }
+#game.cursor-super { cursor: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><circle cx='16' cy='16' r='10' fill='none' stroke='%239fe8ff' stroke-width='2'/><circle cx='16' cy='16' r='2.5' fill='%239fe8ff'/><path d='M16 0v8M16 24v8M0 16h8M24 16h8' stroke='%239fe8ff' stroke-width='2'/></svg>") 16 16, crosshair; }
 #selbox {
   position: absolute;
   border: 1px solid var(--green);
@@ -192,6 +203,30 @@ html, body {
 }
 .bbtn .bprog { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--green); width: 0%; box-shadow: 0 0 6px var(--green); }
 .bbtn .block { font-size: 10px; color: var(--red); display: block; min-height: 12px; }
+
+/* ============ 超级武器按钮 ============ */
+#superWrap { position: relative; }
+#superWrap.hidden { display: none; }
+#superBtn {
+  width: 100%; padding: 9px 10px; cursor: pointer;
+  display: flex; align-items: center; gap: 8px;
+  background: linear-gradient(160deg, #1a2434, #131b28);
+  color: var(--dim); border: 1px solid var(--line); border-radius: 5px;
+  font-size: 13px; letter-spacing: 1px; font-weight: 600;
+  transition: border-color .15s, box-shadow .15s, color .15s;
+}
+#superBtn .sw-icon { font-size: 15px; color: var(--dim); transition: color .15s, text-shadow .15s; }
+#superBtn span:last-child { margin-left: auto; font-size: 11px; font-variant-numeric: tabular-nums; }
+#superBtn.ready {
+  color: #dff4ff; border-color: #57d7e8aa;
+  box-shadow: 0 0 14px #57d7e833, inset 0 0 10px #57d7e814;
+  animation: superPulse 2.2s infinite;
+}
+#superBtn.ready .sw-icon { color: var(--cyan); text-shadow: 0 0 8px var(--cyan); }
+@keyframes superPulse {
+  0%, 100% { box-shadow: 0 0 10px #57d7e826; }
+  50% { box-shadow: 0 0 20px #57d7e855; }
+}
 
 #minimapWrap {
   position: relative; padding: 6px; align-self: center;

@@ -43,8 +43,8 @@ export function startDemo({ world, game, camera, ai }) {
     return null;
   }
 
-  const queue = ['power', 'barracks', 'factory'];
-  const cycle = ['cheetah', 'cheetah', 'hunter', 'mlrs', 'reaper', 'rocket', 'sniper'];
+  const queue = ['power', 'barracks', 'factory', 'radar', 'npower'];
+  const cycle = ['cheetah', 'cheetah', 'hunter', 'mlrs', 'titan', 'rocket', 'sniper'];
   let attacked = false;
   let waveCd = 0;
 

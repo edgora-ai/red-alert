@@ -128,7 +128,7 @@ export class Sound {
       if (e.type === 'shot') this.eventHeat = Math.min(1.2, this.eventHeat + 0.025);
       if (e.type === 'boom') this.eventHeat = Math.min(1.2, this.eventHeat + (e.big ? 0.16 : 0.08));
       if (e.type === 'underAttack') this.eventHeat = Math.min(1.2, this.eventHeat + 0.2);
-      const gap = { shot: 60, boom: 80, deposit: 350, move: 140, select: 90, ready: 400, error: 250, underAttack: 1500, promote: 300 }[e.type] ?? 60;
+      const gap = { shot: 60, boom: 80, deposit: 350, move: 140, select: 90, ready: 400, error: 250, underAttack: 1500, promote: 300, superLaunch: 1200, superHit: 900 }[e.type] ?? 60;
       if (now - (this.last[e.type] || 0) < gap) continue;
       this.last[e.type] = now;
       this.play(e, cam);
@@ -156,6 +156,8 @@ export class Sound {
       case 'capture': this.fanfare([523, 659, 784, 1046], 0.12, 'sine'); break;
       case 'promote': this.promote(); break;
       case 'underAttack': this.klaxon(); break;
+      case 'superLaunch': this.superCharge(S(e.x, e.y)); break;
+      case 'superHit': this.superBoom(S(e.x, e.y)); break;
       case 'techDone': this.techDone(); break;
       case 'lowPower': this.tone({ freq: 520, dur: 0.5, type: 'square', gain: 0.08, slideTo: 300 }); break;
       case 'win': this.jingle(true); break;
@@ -285,6 +287,26 @@ export class Sound {
   klaxon() {
     for (let i = 0; i < 3; i++) {
       this.tone({ freq: i % 2 ? 440 : 587, dur: 0.16, type: 'square', gain: 0.09, delay: i * 0.17, vary: false, lp: 1800 });
+    }
+  }
+  // 超级武器：天顶充能爬升（预警期）
+  superCharge(out) {
+    this.tone({ freq: 80, dur: 1.6, type: 'sawtooth', gain: 0.13, slideTo: 920, out, lp: 2400 });
+    this.tone({ freq: 130, dur: 1.6, type: 'sine', gain: 0.09, slideTo: 1350, out });
+    this.noise({ dur: 1.7, type: 'bandpass', freq: 3200, gain: 0.09, out });
+  }
+  // 超级武器落点：史诗级分层爆响 + 更长闪避
+  superBoom(out) {
+    const t = this.ctx.currentTime;
+    this.musicBus.gain.cancelScheduledValues(t);
+    this.musicBus.gain.setTargetAtTime(this.musicBase * 0.28, t, 0.02);
+    this.musicBus.gain.setTargetAtTime(this.musicBase, t + 1.0, 0.9);
+    this.noise({ dur: 0.06, type: 'highpass', freq: 2200, gain: 0.8, out });
+    this.noise({ dur: 0.95, type: 'lowpass', freq: 700, freqEnd: 110, gain: 1.1, out });
+    this.tone({ freq: 46, dur: 1.5, type: 'sine', gain: 1.05, slideTo: 18, out });
+    this.noise({ dur: 2.6, type: 'lowpass', freq: 140, gain: 0.4, out, delay: 0.18 });
+    for (let i = 0; i < 5; i++) {
+      this.noise({ dur: 0.05 + Math.random() * 0.06, type: 'bandpass', freq: 700 + Math.random() * 1600, gain: 0.24, out, delay: 0.2 + Math.random() * 0.7 });
     }
   }
   fanfare(notes, dur, type) {
