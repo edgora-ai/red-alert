@@ -69,6 +69,7 @@ export class Input {
 
   onDown(e) {
     this.sound.unlock();
+    this.game.userPlay = true; // 玩家任何指令 = 接管玩家侧（演示模式停止自动化）
     const rect = this.cv.getBoundingClientRect();
     const px = e.clientX - rect.left, py = e.clientY - rect.top;
     const t = this.s2t(px, py);
@@ -88,12 +89,13 @@ export class Input {
           this.game.markers.push({ x: t.x, y: t.y, type: 'attack', ttl: 30, max: 30 });
         }
         this.attackMove = false;
+        this.updateCursorState();
         return;
       }
       this.dragStart = { x: px, y: py, shift: e.shiftKey };
     } else if (e.button === 2) {
       if (w.sides.player.placing) { w.issueCommand('player', { type: 'cancelPlace' }); return; }
-      if (this.attackMove) { this.attackMove = false; return; }
+      if (this.attackMove) { this.attackMove = false; this.updateCursorState(); return; }
       this.rightCommand(t.x, t.y);
     }
   }
@@ -140,6 +142,14 @@ export class Input {
     const t = this.s2t(cx, cy);
     this.game.mouseTile = { tx: Math.floor(t.x), ty: Math.floor(t.y) };
 
+    // 悬停敌人检测（节流）：有武装部队选中时切换攻击光标
+    if ((this.hoverCd = (this.hoverCd || 0) - 1) <= 0) {
+      this.hoverCd = 6;
+      const armed = this.selectedUnits().some(u => u.weapon);
+      this.hoverEnemy = !!(armed && inside && this.pickAt(t.x, t.y)?.side && this.pickAt(t.x, t.y).side !== 'player');
+      this.updateCursorState();
+    }
+
     if (this.dragStart) {
       const dx = cx - this.dragStart.x, dy = cy - this.dragStart.y;
       if (Math.abs(dx) + Math.abs(dy) > 6) {
@@ -176,22 +186,44 @@ export class Input {
         .map(u => u.id);
       if (!shift) this.game.selection.clear();
       ids.forEach(id => this.game.selection.add(id));
-      if (ids.length) this.sound.play({ type: 'select' });
+      if (ids.length) { this.sound.play({ type: 'select' }); this.game.userPlay = true; }
       return;
     }
 
-    // 点选
+    // 点选（双击同类 = 全选屏内该型单位）
     const t = this.s2t(cx, cy);
     const picked = this.pickAt(t.x, t.y);
     if (!shift) this.game.selection.clear();
     if (picked && picked.side === 'player') {
       this.game.selection.add(picked.id);
+      this.game.userPlay = true;
       this.sound.play({ type: 'select' });
+      const now = performance.now();
+      if (this.lastClick && now - this.lastClick.t < 350 && this.lastClick.type === picked.type) {
+        const ids = this.world.unitsOf('player')
+          .filter(u => u.type === picked.type && this.onScreen(u)).map(u => u.id);
+        ids.forEach(id => this.game.selection.add(id));
+        this.lastClick = null;
+      } else {
+        this.lastClick = { t: now, type: picked.type };
+      }
     }
+  }
+
+  // 单位是否在当前视口内（世界坐标包围盒近似）
+  onScreen(u) {
+    const a = this.s2t(0, 0), b = this.s2t(this.renderer.vw, this.renderer.vh);
+    if (!this._viewBox || this._viewBoxT !== performance.now()) {
+      this._viewBox = { x0: Math.min(a.x, b.x) - 1, x1: Math.max(a.x, b.x) + 1, y0: Math.min(a.y, b.y) - 1, y1: Math.max(a.y, b.y) + 1 };
+      this._viewBoxT = performance.now();
+    }
+    const v = this._viewBox;
+    return u.x >= v.x0 && u.x <= v.x1 && u.y >= v.y0 && u.y <= v.y1;
   }
 
   onWheel(e) {
     e.preventDefault();
+    this.game.userCam = true;
     this.cam.dist = Math.min(70, Math.max(10, this.cam.dist * (e.deltaY > 0 ? 1.12 : 0.9)));
   }
 
@@ -206,11 +238,28 @@ export class Input {
         case 'a': if (ids.length) this.attackMove = true; break;
         case 's': w.issueCommand('player', { type: 'stop', ids }); break;
         case 'd': w.issueCommand('player', { type: 'deploy', ids }); break;
+        case 't': { // 全选屏内战斗单位
+          const ids2 = w.unitsOf('player').filter(u => u.weapon && this.onScreen(u)).map(u => u.id);
+          if (ids2.length) {
+            this.game.selection = new Set(ids2);
+            this.sound.play({ type: 'select' });
+          }
+          break;
+        }
         case 'x': {
           const b = this.selectedBuildings()[0];
           if (b) { w.issueCommand('player', { type: 'sell', id: b.id }); this.game.selection.delete(b.id); }
           break;
         }
+        case 'p': this.game.paused = !this.game.paused; break;
+        case 'm': this.sound.setSetting('muted', !this.sound.settings.muted); break;
+        case 'h': {
+          const yard = w.buildingsOf('player').find(b => b.type === 'yard') || w.buildingsOf('player')[0];
+          if (yard) { this.cam.x = yard.x; this.cam.y = yard.y; this.game.userCam = true; }
+          break;
+        }
+        case '=': case '+': this.game.speedIdx = Math.min(this.game.SPEEDS.length - 1, this.game.speedIdx + 1); break;
+        case '-': case '_': this.game.speedIdx = Math.max(0, this.game.speedIdx - 1); break;
         case 'escape':
           if (w.sides.player.placing) w.issueCommand('player', { type: 'cancelPlace' });
           this.attackMove = false;
@@ -224,15 +273,25 @@ export class Input {
             }
           }
       }
+      this.updateCursorState();
+      // 命令类按键 = 玩家接管（演示模式停止自动化）
+      if (['a', 's', 'd', 'x', 't'].includes(k) || /^[1-3]$/.test(k)) this.game.userPlay = true;
     } else {
       this.keys.delete(k);
     }
   }
 
+  // 光标状态：攻击移动/指向敌人时用红色攻击光标
+  updateCursorState() {
+    const armed = this.selectedUnits().some(u => u.weapon);
+    const attacking = this.attackMove || (armed && this.hoverEnemy);
+    this.cv.classList.toggle('cursor-attack', !!attacking);
+  }
+
   updateCamera(dt) {
     // Q/E 旋转视角
-    if (this.keys.has('q')) this.cam.yaw += dt * 1.8;
-    if (this.keys.has('e')) this.cam.yaw -= dt * 1.8;
+    if (this.keys.has('q')) { this.cam.yaw += dt * 1.8; this.game.userCam = true; }
+    if (this.keys.has('e')) { this.cam.yaw -= dt * 1.8; this.game.userCam = true; }
 
     const speed = 16 * dt * (this.cam.dist / 26);
     // 屏幕方向 → 地面方向（随 yaw 旋转）
@@ -245,14 +304,17 @@ export class Input {
     if (this.keys.has('arrowright')) { mx += rx; my += ry; }
     // 边缘滚动（框选拖拽中禁用，防止视野跑偏）
     if (this.mouse.inside && !this.dragStart) {
-      const m = 14;
+      const m = 18;
       if (this.mouse.x < m) { mx -= rx; my -= ry; }
       if (this.mouse.x > this.renderer.vw - m) { mx += rx; my += ry; }
       if (this.mouse.y < m) { mx += fx; my += fy; }
       if (this.mouse.y > this.renderer.vh - m) { mx -= fx; my -= fy; }
     }
-    const len = Math.hypot(mx, my) || 1;
-    this.cam.x = Math.min(this.world.w, Math.max(0, this.cam.x + (mx / len) * speed));
-    this.cam.y = Math.min(this.world.h, Math.max(0, this.cam.y + (my / len) * speed));
+    if (mx || my) {
+      this.game.userCam = true; // 用户接管相机（演示模式停止自动跟随）
+      const len = Math.hypot(mx, my) || 1;
+      this.cam.x = Math.min(this.world.w, Math.max(0, this.cam.x + (mx / len) * speed));
+      this.cam.y = Math.min(this.world.h, Math.max(0, this.cam.y + (my / len) * speed));
+    }
   }
 }

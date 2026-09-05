@@ -1,4 +1,4 @@
-// 武器、弹道与伤害结算
+// 武器、弹道与伤害结算（含开火来源追踪 → 老兵经验/战报统计）
 
 import { WEAPONS, DAMAGE_MULT } from '../config.js';
 import { dist } from './util.js';
@@ -11,6 +11,19 @@ export function updateCombat(world, e) {
 
   // 防御塔低电停摆
   if (e.kind === 'building' && world.power[e.side]?.low) return;
+
+  // 火箭炮齐射进行中：按 burstCd 逐发发射，期间不索敌
+  if (e.burst) {
+    const t = world.entities.get(e.burst.targetId);
+    if (!t || t.dead) { e.burst = null; }
+    else if ((e.burst.cd--) <= 0) {
+      e.burst.cd = w.burstCd;
+      e.dir = Math.atan2(t.y - e.y, t.x - e.x);
+      fireOne(world, e, w, t, (Math.random() - 0.5) * 0.3);
+      if (--e.burst.left <= 0) e.burst = null;
+    }
+    return;
+  }
 
   // 校验当前目标
   let target = e.targetId != null ? world.entities.get(e.targetId) : null;
@@ -70,6 +83,25 @@ function acquireTarget(world, e, w, range) {
 
 function fire(world, e, w, target) {
   world.events.push({ type: 'shot', w: e.weapon, side: e.side, x: e.x, y: e.y });
+  // 齐射武器：先发第一枚，剩余进入连发队列
+  if (w.burst) {
+    e.burst = { left: w.burst - 1, targetId: target.id, cd: w.burstCd };
+    fireOne(world, e, w, target, 0);
+    return;
+  }
+  fireOne(world, e, w, target, 0);
+}
+
+function fireOne(world, e, w, target, off = 0) {
+  if (w.projSpeed > 0) e.recoil = 5; // 炮管后坐（渲染动画用）
+  // 枪口焰（渲染层粒子 + 点光源）
+  world.fx.push({
+    type: 'muzzle',
+    x: e.x + Math.cos(e.dir) * 0.55, y: e.y + Math.sin(e.dir) * 0.55,
+    dir: e.dir, big: w.dmg >= 60, ttl: 4, max: 4,
+  });
+  const ups = world.upgrades?.[e.side];
+  const dmg = w.dmg * (e.dmgMul || 1) * (ups?.fire || 1); // 老兵 + 科技火力加成
   if (w.projSpeed <= 0) {
     // 即时命中：激光/粒子光束/子弹
     const energy = w.dtype === 'energy';
@@ -79,11 +111,12 @@ function fire(world, e, w, target) {
       color: energy ? (e.side === 'player' ? '#7df9ff' : '#ffb347') : '#ffe9a8',
       ttl: energy ? 9 : 4, max: energy ? 9 : 4,
     });
-    applyDamage(world, target, w.dmg, w.dtype);
+    applyDamage(world, target, dmg, w.dtype, e);
   } else {
     world.projectiles.push({
-      x: e.x, y: e.y, targetId: target.id, tx: target.x, ty: target.y,
-      speed: w.projSpeed, weapon: e.weapon, side: e.side,
+      x: e.x, y: e.y + off, targetId: target.id, tx: target.x, ty: target.y,
+      speed: w.projSpeed, weapon: e.weapon, side: e.side, srcId: e.id,
+      dmgMul: (e.dmgMul || 1) * (ups?.fire || 1),
       homing: w.dtype === 'missile',
     });
   }
@@ -100,10 +133,11 @@ export function updateProjectiles(world) {
     const d = dist(p.x, p.y, p.tx, p.ty);
     if (d <= Math.max(p.speed, 0.35)) {
       // 命中
+      const src = p.srcId != null ? world.entities.get(p.srcId) : null;
       if (p.homing && target && !target.dead) {
-        applyDamage(world, target, w.dmg, w.dtype);
+        applyDamage(world, target, w.dmg * p.dmgMul, w.dtype, src);
       }
-      if (w.splash > 0) splashDamage(world, p.tx, p.ty, w);
+      if (w.splash > 0) splashDamage(world, p.tx, p.ty, w, src);
       world.fx.push({ type: 'boom', x: p.tx, y: p.ty, r: w.splash > 0 ? w.splash : 0.5, ttl: 12, max: 12 });
       world.events.push({ type: 'boom', big: w.splash >= 1, x: p.tx, y: p.ty });
       list.splice(i, 1);
@@ -114,22 +148,24 @@ export function updateProjectiles(world) {
   }
 }
 
-export function splashDamage(world, x, y, w) {
+export function splashDamage(world, x, y, w, src = null) {
   for (const t of [...world.entities.values()]) {
     if (t.dead) continue;
     const d = dist(x, y, t.x, t.y);
     if (d > w.splash) continue;
     const falloff = d < w.splash * 0.5 ? 1 : 0.5;
-    applyDamage(world, t, w.dmg * falloff, w.dtype);
+    applyDamage(world, t, w.dmg * falloff, w.dtype, src);
   }
 }
 
-export function applyDamage(world, target, raw, dtype) {
+export function applyDamage(world, target, raw, dtype, src = null) {
   if (target.dead) return;
   const armor = target.kind === 'building' ? 'building' : world.unitDef(target).armor;
   const mult = DAMAGE_MULT[dtype][armor] ?? 1;
   if (mult <= 0) return;
-  target.hp -= raw * mult;
+  const ups = world.upgrades?.[target.side];
+  target.hp -= (raw * mult) / (ups?.armor || 1); // 复合装甲减伤
   target.flash = 4; // 受击闪白（渲染用）
-  if (target.hp <= 0) world.killEntity(target);
+  world.onDamaged(target, src);
+  if (target.hp <= 0) world.killEntity(target, src);
 }

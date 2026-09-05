@@ -1,8 +1,12 @@
 // 演示/自测模式：仅当 URL 带 ?demo=1 时加载，自动执行一套建造+进攻流程
 // 用途：无头截图验证全链路，或给玩家展示对战效果
 
+import { DIFFS } from './config.js';
+
 export function startDemo({ world, game, camera, ai }) {
   const w = world;
+  const diff = new URLSearchParams(location.search).get('diff');
+  if (diff && DIFFS[diff]) ai.diff = DIFFS[diff];
 
   // ?scene=battle：摆一场遭遇战用于特效验证/截图
   if (new URLSearchParams(location.search).get('scene') === 'battle') {
@@ -40,12 +44,14 @@ export function startDemo({ world, game, camera, ai }) {
   }
 
   const queue = ['power', 'barracks', 'factory'];
-  const produceUnits = ['cheetah', 'cheetah', 'cheetah', 'hunter'];
+  const cycle = ['cheetah', 'cheetah', 'hunter', 'mlrs', 'reaper', 'rocket', 'sniper'];
   let attacked = false;
+  let waveCd = 0;
 
   // 演示决策：每调用一次推进一步（由 interval 或快进循环驱动）
+  // 玩家一旦亲自操作（下达命令/框选/生产），演示立即停止接管玩家侧，变成玩家 vs AI
   function step() {
-    if (w.winner) return;
+    if (w.winner || game.userPlay) return;
 
     // 建筑：逐个生产并放置
     const placing = w.sides.player.placing;
@@ -63,33 +69,29 @@ export function startDemo({ world, game, camera, ai }) {
       return;
     }
 
-    // 载具：排队生产
+    // 载具：持续按循环补兵
     const factory = w.buildingsOf('player').find(b => b.type === 'factory');
-    if (factory && produceUnits.length) {
-      if (factory.queue.length < 2) {
-        const item = produceUnits[0];
-        if (w.issueCommand('player', { type: 'produce', item })) produceUnits.shift();
-      }
-      return;
+    if (factory && factory.queue.length < 2) {
+      const item = cycle[waveCd++ % cycle.length];
+      w.issueCommand('player', { type: 'produce', item });
     }
 
-    // 攒齐 5 辆战车：全选并 A 向敌方建造厂
-    if (!attacked) {
-      const army = w.unitsOf('player').filter(u => u.weapon && u.type !== 'harvester');
-      if (army.length >= 5) {
-        const ey = w.buildingsOf('enemy').find(b => b.type === 'yard') || w.buildingsOf('enemy')[0];
-        if (ey) {
-          w.issueCommand('player', { type: 'attackmove', ids: army.map(u => u.id), x: ey.x, y: ey.y });
-          game.selection = new Set(army.map(u => u.id));
-          attacked = true;
-        }
+    // 攒够一波就 A 向敌方建造厂，打完继续攒
+    const army = w.unitsOf('player').filter(u => u.weapon && u.type !== 'harvester' && u.order?.type !== 'attackmove');
+    if (army.length >= 6) {
+      const ey = w.buildingsOf('enemy').find(b => b.type === 'yard') || w.buildingsOf('enemy')[0];
+      if (ey) {
+        w.issueCommand('player', { type: 'attackmove', ids: army.map(u => u.id), x: ey.x, y: ey.y });
+        game.selection = new Set(army.map(u => u.id));
+        attacked = true;
       }
-    } else {
-      // 镜头跟着大军走
-      const army = w.unitsOf('player').filter(u => u.weapon);
-      if (army.length) {
-        const cx = army.reduce((s, u) => s + u.x, 0) / army.length;
-        const cy = army.reduce((s, u) => s + u.y, 0) / army.length;
+    }
+    // 镜头跟军走；用户一旦手动操控相机（边缘滚动/滚轮/小地图）就交还控制权
+    if (attacked && !game.userCam) {
+      const all = w.unitsOf('player').filter(u => u.weapon);
+      if (all.length) {
+        const cx = all.reduce((s, u) => s + u.x, 0) / all.length;
+        const cy = all.reduce((s, u) => s + u.y, 0) / all.length;
         camera.x += (cx - camera.x) * 0.05;
         camera.y += (cy - camera.y) * 0.05;
       }

@@ -1,7 +1,7 @@
 // 世界：地图、实体、tick 主逻辑（移动/生产/建造/采集/战斗/迷雾/胜负）
 
 import {
-  T, PASSABLE, MAP_W, MAP_H, UNITS, BUILDINGS, ECON, buildTicks, TICK_RATE,
+  T, PASSABLE, MAP_W, MAP_H, UNITS, BUILDINGS, UPGRADES, ECON, VET, buildTicks, TICK_RATE,
 } from '../config.js';
 import { mulberry32, dist, clamp } from './util.js';
 import { findPath, nearestOpen } from './pathfind.js';
@@ -25,6 +25,16 @@ export class World {
     this.power = { player: { supply: 0, demand: 0, low: false }, enemy: { supply: 0, demand: 0, low: false } };
     this.sides = { player: { placing: null }, enemy: { placing: null } };
     this.fog = new Uint8Array(MAP_W * MAP_H); // 0 未见 1 探索 2 可见（玩家视角）
+    this.alerts = [];   // 受击警报点（小地图红点ping + AI 防守），UI 消费
+    this.stats = {      // 战报统计（结算面板用）
+      player: { kills: 0, lost: 0, built: 0, spent: 0 },
+      enemy: { kills: 0, lost: 0, built: 0, spent: 0 },
+    };
+    // 全局科技加成（fire/armor/speed/mine 倍率，owned=已研发集合）
+    this.upgrades = {
+      player: { fire: 1, armor: 1, speed: 1, mine: 1, owned: new Set() },
+      enemy: { fire: 1, armor: 1, speed: 1, mine: 1, owned: new Set() },
+    };
     this.tickCount = 0;
     this.winner = null;
     this.rng = mulberry32(seed);
@@ -81,6 +91,7 @@ export class World {
       path: null, pathi: 0, order: { type: 'idle' },
       cooldown: 0, scanCd: (nextId * 7) % 10, repathCd: 0,
       targetId: null, load: 0, flash: 0,
+      level: 0, xp: 0, dmgMul: 1, // 老兵等级（0=新兵 Lv1）
     };
     if (def.harvester) u.order = { type: 'harvest' };
     this.entities.set(u.id, u);
@@ -99,10 +110,41 @@ export class World {
     for (let dy = 0; dy < def.h; dy++)
       for (let dx = 0; dx < def.w; dx++)
         this.bgrid[this.idx(tx + dx, ty + dy)] = b.id;
+    this.stats[side].built++;
     return b;
   }
 
-  killEntity(e) {
+  // 击杀奖励：来源单位积攒经验并晋升（火力 +15%/级，耐久 +20%/级）
+  addXp(u, gain) {
+    if (!u || u.dead || u.kind !== 'unit' || !u.weapon) return;
+    if (u.type === 'harvester' || u.type === 'mcv') return;
+    u.xp += gain;
+    while (u.level < VET.thresholds.length && u.xp >= VET.thresholds[u.level]) {
+      u.level++;
+      u.dmgMul = 1 + u.level * VET.dmgPerLevel;
+      const bonus = u.maxHp * VET.hpPerLevel;
+      u.maxHp += bonus;
+      u.hp += bonus;
+      this.events.push({ type: 'promote', x: u.x, y: u.y });
+      if (u.side === 'player') {
+        this.messages.push({ side: 'player', text: `${UNITS[u.type].name} 晋升为老兵（Lv${u.level + 1}）`, ttl: 120 });
+      }
+    }
+  }
+
+  // 受击警报：玩家侧弹警报消息/小地图红点；双方都记录供 AI 防守判读
+  onDamaged(target, src) {
+    if (src && src.side === target.side) return;
+    this.alerts.push({ x: target.x, y: target.y, ttl: 75, max: 75, side: target.side });
+    if (target.side !== 'player') return;
+    if (this.tickCount - (this.lastAlarmTick ?? -999) < 110) return;
+    this.lastAlarmTick = this.tickCount;
+    const isBase = target.kind === 'building';
+    this.messages.push({ side: 'player', text: isBase ? '警告：基地遭到攻击！' : '警告：我方部队遭到攻击！', ttl: 120 });
+    this.events.push({ type: 'underAttack', x: target.x, y: target.y });
+  }
+
+  killEntity(e, killer = null) {
     if (e.dead) return;
     e.dead = true;
     if (e.kind === 'building') {
@@ -113,7 +155,14 @@ export class World {
     this.entities.delete(e.id);
     const r = e.kind === 'building' ? Math.max(e.w, e.h) * 0.8 : 0.6;
     this.fx.push({ type: 'boom', x: e.x, y: e.y, r, ttl: 16, max: 16 });
-    this.events.push({ type: 'boom', big: e.kind === 'building' });
+    this.events.push({ type: 'boom', big: e.kind === 'building', x: e.x, y: e.y });
+    // 战报与经验
+    if (e.kind === 'unit') this.stats[e.side].lost++;
+    if (killer && !killer.dead && killer.side !== e.side) {
+      this.stats[killer.side].kills++;
+      const def = this.defOf(e);
+      this.addXp(killer, Math.round((def.cost || 300) * 0.3 + (e.maxHp || 100) * 0.35));
+    }
   }
 
   // ---------- 命令 ----------
@@ -142,10 +191,11 @@ export class World {
   }
 
   canProduce(side, item) {
-    const def = UNITS[item] || BUILDINGS[item];
+    const def = UNITS[item] || BUILDINGS[item] || UPGRADES[item];
     if (!def) return { ok: false, reason: '未知项目' };
+    if (UPGRADES[item] && this.upgrades[side].owned.has(item)) return { ok: false, reason: '已研发' };
     if (def.side && def.side !== side) return { ok: false, reason: '阵营限定' };
-    const producerType = UNITS[item] ? UNITS[item].producer : 'yard';
+    const producerType = UNITS[item] ? UNITS[item].producer : (UPGRADES[item]?.producer || 'yard');
     const producer = this.buildingsOf(side).find(b => b.type === producerType && (b.def?.produces ?? BUILDINGS[b.type].produces)?.includes(item));
     if (!producer) return { ok: false, reason: '缺少生产建筑' };
     if (!this.hasPrereq(side, def)) return { ok: false, reason: '前置科技未解锁' };
@@ -159,8 +209,9 @@ export class World {
       if (side === 'player') { this.messages.push({ side, text: chk.reason, ttl: 90 }); this.events.push({ type: 'error' }); }
       return false;
     }
-    const def = UNITS[item] || BUILDINGS[item];
+    const def = UNITS[item] || BUILDINGS[item] || UPGRADES[item];
     this.credits[side] -= def.cost;
+    this.stats[side].spent += def.cost;
     chk.producer.queue.push(item);
     this.events.push({ type: 'select' });
     return true;
@@ -173,7 +224,7 @@ export class World {
     const i = b.queue.lastIndexOf(item);
     b.queue.splice(i, 1);
     if (i === 0) b.progress = 0;
-    const def = UNITS[item] || BUILDINGS[item];
+    const def = UNITS[item] || BUILDINGS[item] || UPGRADES[item];
     this.credits[side] += def.cost;
     this.events.push({ type: 'select' });
     return true;
@@ -250,6 +301,7 @@ export class World {
     ids.forEach((id, i) => {
       const u = this.entities.get(id);
       if (!u || u.kind !== 'unit' || u.side !== side || u.dead) return;
+      if (u.type === 'harvester' && mode === 'attackmove') return; // 采矿车不理会攻击移动，继续干活
       if (u.type === 'harvester' && mode === 'move') u.harvest = { state: 'idle', timer: 0 }; // 手动打断采矿
       u.order = { type: mode, x, y };
       u.targetId = null;
@@ -344,7 +396,12 @@ export class World {
       if (alt) { tx = alt.x; ty = alt.y; }
     }
     const path = findPath(this, u.x, u.y, tx, ty, def.fly);
-    if (path === null) { u.path = null; return false; }
+    if (path === null) {
+      // 不可达（封闭区域等）：直线逼近，保证部队对命令有响应而不是罚站
+      u.path = [{ x: tx + 0.5, y: ty + 0.5 }];
+      u.pathi = 0;
+      return true;
+    }
     u.path = path; u.pathi = 0;
     return true;
   }
@@ -353,7 +410,7 @@ export class World {
     if (!u.path) return;
     const wp = u.path[u.pathi];
     if (!wp) { u.path = null; return; }
-    const step = u.speed / TICK_RATE;
+    const step = (u.speed * (this.upgrades[u.side]?.speed || 1)) / TICK_RATE;
     const d = dist(u.x, u.y, wp.x, wp.y);
     if (d <= step) {
       u.x = wp.x; u.y = wp.y;
@@ -381,6 +438,7 @@ export class World {
           if (!this.inBounds(tx, ty) || this.isBlocked(tx, ty)) continue;
           if (this.unitAtTile(tx, ty)) continue; // 不和别的单位叠罗汉
           const u = this.addUnit(side, type, tx + 0.5, ty + 0.5);
+          this.stats[side].built++;
           if (building.rally && u.type !== 'harvester') {
             u.order = { type: 'move', x: building.rally.x, y: building.rally.y };
             this.setPath(u, building.rally.x, building.rally.y);
@@ -402,7 +460,7 @@ export class World {
   updateProduction(b) {
     if (!b.queue.length) return;
     const item = b.queue[0];
-    const def = UNITS[item] || BUILDINGS[item];
+    const def = UNITS[item] || BUILDINGS[item] || UPGRADES[item];
     const total = buildTicks(def);
     // 建筑完成但等待放置槽空闲时，停在 100%
     if (BUILDINGS[item] && this.sides[b.side].placing && b.progress >= total) return;
@@ -410,7 +468,17 @@ export class World {
     b.progress += rate;
     if (b.progress < total) return;
 
-    if (BUILDINGS[item]) {
+    if (UPGRADES[item]) {
+      // 科技研发完成：全局加成生效
+      const up = UPGRADES[item];
+      this.upgrades[b.side][up.effect] = up.value;
+      this.upgrades[b.side].owned.add(item);
+      b.queue.shift(); b.progress = 0;
+      if (b.side === 'player') {
+        this.messages.push({ side: b.side, text: `${up.name} 研发完成：${up.desc}`, ttl: 180 });
+        this.events.push({ type: 'techDone' });
+      }
+    } else if (BUILDINGS[item]) {
       this.sides[b.side].placing = item;
       if (b.side === 'player') {
         this.messages.push({ side: b.side, text: `${def.name} 已就绪，点击地图放置`, ttl: 180 });
@@ -493,6 +561,7 @@ export class World {
 
     for (const e of [...this.entities.values()]) {
       if (e.flash > 0) e.flash--;
+      if (e.recoil > 0) e.recoil--; // 炮管后坐恢复（渲染用）
       if (e.kind === 'unit') {
         this.updateMovement(e);
         if (e.order?.type === 'harvest') updateHarvester(this, e);
@@ -509,6 +578,11 @@ export class World {
 
     updateProjectiles(this);
 
+    // 后台标签/无头快进时渲染层不消费 fx，限制容量防堆积
+    if (this.fx.length > 500) this.fx.splice(0, this.fx.length - 500);
+    if (this.alerts.length && this.tickCount % 5 === 0) {
+      this.alerts = this.alerts.filter(a => (a.ttl -= 5) > 0);
+    }
     if (this.tickCount % 6 === 0) this.updateFog();
     if (this.tickCount % 30 === 0) this.checkWinner();
   }

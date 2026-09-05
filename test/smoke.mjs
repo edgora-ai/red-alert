@@ -58,6 +58,32 @@ const enemyTotalHpAfter = world.unitsOf('enemy').reduce((s, u) => s + u.hp, 0);
 check('交火造成伤害', enemyTotalHpAfter < enemyTotalHp || world.unitsOf('enemy').length < enemyStartUnits,
   `enemyHp ${Math.round(enemyTotalHp)} -> ${Math.round(enemyTotalHpAfter)}`);
 
+// —— 阶段3.5：老兵/战报/警报系统 ——
+const vetUnit = world.unitsOf('player').find(u => u.weapon && u.type !== 'harvester');
+if (vetUnit) {
+  world.addXp(vetUnit, 300);
+  check('老兵晋升（经验→等级/火力加成）', vetUnit.level >= 1 && vetUnit.dmgMul > 1,
+    `level=${vetUnit.level} dmgMul=${vetUnit.dmgMul.toFixed(2)}`);
+}
+const victim = world.unitsOf('enemy')[1] || world.unitsOf('enemy')[0];
+if (vetUnit && victim) {
+  const killsBefore = world.stats.player.kills;
+  victim.hp = 1;
+  victim.x = vetUnit.x + 1; victim.y = vetUnit.y;
+  const { applyDamage } = await import('../src/sim/combat.js');
+  applyDamage(world, victim, 10, 'shell', vetUnit);
+  check('击杀计入战报并积累经验', world.stats.player.kills === killsBefore + 1 && vetUnit.xp > 0,
+    `kills=${world.stats.player.kills} xp=${vetUnit.xp}`);
+}
+const playerUnit = world.unitsOf('player')[0];
+const alertsBefore = world.alerts.length;
+if (playerUnit) {
+  const { applyDamage } = await import('../src/sim/combat.js');
+  applyDamage(world, playerUnit, 5, 'bullet', null);
+}
+check('受击产生警报点（小地图/AI 防守用）', world.alerts.length > alertsBefore,
+  `alerts ${alertsBefore} -> ${world.alerts.length}`);
+
 // —— 阶段4：长跑 6000 tick，验证 AI 建造与系统稳定 ——
 const enemyBuildingsBefore = world.buildingsOf('enemy').length;
 for (let i = 0; i < 6000 && !world.winner; i++) { world.tick(); ai.tick(); }
@@ -65,8 +91,69 @@ const enemyBuildingsAfter = world.buildingsOf('enemy').length;
 check('AI 持续扩张建筑', enemyBuildingsAfter >= enemyBuildingsBefore, `enemy buildings ${enemyBuildingsBefore} -> ${enemyBuildingsAfter}`);
 check('模拟长跑无异常结束', true, `tick=${world.tickCount} winner=${world.winner ?? '未分胜负'}`);
 
+// —— 阶段5：科技研发（AI 交战可能已推平基地：重建建造厂保证后续生产线） ——
+if (!world.buildingsOf('player').some(b => b.type === 'yard')) world.addBuilding('player', 'yard', 7, 79);
+world.credits.player = 9000;
+function findPlace(btype) {
+  const yard = world.buildingsOf('player').find(b => b.type === 'yard');
+  for (let r = 2; r <= 12; r++) {
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+      if (world.canPlace('player', btype, yard.tx + dx, yard.ty + dy)) return { tx: yard.tx + dx, ty: yard.ty + dy };
+    }
+  }
+  return null;
+}
+check('雷达站建造并放置成功', produceAndPlace('radar', (() => { const p = findPlace('radar'); return p.tx; })(), (() => { const p = findPlace('radar'); return p.ty; })()) === true);
+const fireBefore = world.upgrades.player.fire;
+world.issueCommand('player', { type: 'produce', item: 'ap' });
+let apQueued = false;
+for (const b of world.buildingsOf('player')) if (b.queue?.includes('ap')) apQueued = true;
+check('科技进入研发队列（雷达站）', apQueued);
+for (let i = 0; i < 1200 && !world.upgrades.player.owned.has('ap'); i++) world.tick();
+check('精准弹药研发完成（全军火力+20%）', world.upgrades.player.fire === 1.2 && world.upgrades.player.owned.has('ap'),
+  `fire=${world.upgrades.player.fire}`);
+check('重复研发被拒绝', world.issueCommand('player', { type: 'produce', item: 'ap' }) === false);
+
+// —— 阶段6：火箭炮齐射 ——
+const target6 = world.unitsOf('enemy')[0];
+const mlrs = target6 ? world.addUnit('player', 'mlrs', target6.x - 6, target6.y) : null;
+let maxProj = 0;
+if (target6 && mlrs) {
+  mlrs.order = { type: 'attack', x: target6.x, y: target6.y };
+  mlrs.targetId = target6.id;
+  for (let i = 0; i < 120; i++) { world.tick(); maxProj = Math.max(maxProj, world.projectiles.length); }
+}
+check('火箭炮 6 连发齐射', maxProj >= 3, `maxProjectiles=${maxProj}`);
+
+// —— 阶段7：命令响应（不可达目标也必须动起来） ——
+const { T: TT } = await import('../src/config.js');
+const px0 = 50, py0 = 50;
+for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) world.tiles[world.idx(px0 + dx, py0 + dy)] = TT.GRASS;
+for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+  if (Math.abs(dx) !== 2 && Math.abs(dy) !== 2) continue;
+  world.tiles[world.idx(px0 + dx, py0 + dy)] = TT.ROCK; // 全封闭岩石口袋
+}
+const pocket = world.addUnit('player', 'rifle', px0 + 0.5, py0 + 0.5);
+world.issueCommand('player', { type: 'move', ids: [pocket.id], x: px0 + 12, y: py0 + 12 });
+for (let i = 0; i < 90; i++) world.tick();
+check('不可达目标仍响应移动命令（直线逼近）', Math.hypot(pocket.x - px0 - 0.5, pocket.y - py0 - 0.5) > 0.8,
+  `moved to ${pocket.x.toFixed(2)},${pocket.y.toFixed(2)}`);
+const harv = world.unitsOf('player').find(u => u.type === 'harvester');
+if (harv) {
+  world.issueCommand('player', { type: 'attackmove', ids: [harv.id], x: 10, y: 10 });
+  check('采矿车无视攻击移动（继续采矿）', harv.order.type !== 'attackmove', `order=${harv.order.type}`);
+}
+
 // —— 收尾：迷雾与消息机制 ——
 check('战争迷雾已刷新', world.fog.some(v => v >= 1));
+
+// —— 难度分级 ——
+const { Commander: C2 } = await import('../src/sim/ai.js');
+const w2 = (await import('../src/sim/world.js')).createSkirmish(999);
+const hardAI = new C2(w2, 'enemy', 'hard');
+check('难度分级生效（困难 AI 运营补贴更高）', hardAI.diff.trickle === 20 && hardAI.diff.waveBase === 8,
+  `trickle=${hardAI.diff.trickle}`);
 
 console.log(`\n${failures === 0 ? '全部通过 ✔' : failures + ' 项失败 ✘'}`);
 process.exit(failures === 0 ? 0 : 1);

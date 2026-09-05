@@ -26,7 +26,7 @@ export function updateHarvester(world, u) {
     }
     case 'loading': {
       const i = world.idx(h.oreTx, h.oreTy);
-      const perTick = ECON.loadAmount / ECON.harvestTicks;
+      const perTick = (ECON.loadAmount * (world.upgrades?.[u.side]?.mine || 1)) / ECON.harvestTicks;
       const take = Math.min(perTick, world.ore[i]);
       world.ore[i] -= take;
       u.load = (u.load || 0) + take;

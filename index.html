@@ -20,28 +20,68 @@ window.addEventListener('unhandledrejection', e => logErr('unhandled: ' + (e.rea
 </script>
 </head>
 <body>
+  <!-- 开始界面（选难度 + 解锁音频） -->
+  <div id="start">
+    <div class="start-card">
+      <div class="start-crest"></div>
+      <div class="start-title">现代红警</div>
+      <div class="start-sub">MODERN RED ALERT · 即时战略遭遇战</div>
+      <div class="start-desc">采矿经济 · 基地建造 · 战争迷雾 · AI 指挥官</div>
+      <div class="diff-label">选择 AI 难度</div>
+      <div class="diff-row">
+        <button class="diff-btn" data-diff="easy">简单<small>敌方经济迟缓</small></button>
+        <button class="diff-btn active" data-diff="normal">普通<small>旗鼓相当</small></button>
+        <button class="diff-btn" data-diff="hard">困难<small>坦克海攻势</small></button>
+      </div>
+      <button id="startBtn">开 始 行 动</button>
+      <div class="start-keys">左键框选 · 右键移动/攻击 · A 攻击移动 · D 展开 · P 暂停 · Q/E 旋转</div>
+    </div>
+  </div>
+
   <div id="topbar">
     <span class="brand">现代红警</span>
-    <span id="credits" class="stat">💰 0</span>
-    <span id="power" class="stat">⚡ 0/0</span>
+    <span id="credits" class="stat">0</span>
+    <div id="powerWrap" title="电力：需求/供给">
+      <svg width="11" height="14" viewBox="0 0 11 14" style="flex:none"><path d="M6.5 0 0 8h3.5L3 14l7-8.5H6z" fill="#ffc94d"/></svg>
+      <div id="powerBar"><div id="powerFill"></div></div>
+      <span id="power">0/0</span>
+    </div>
     <span id="msg"></span>
-    <span class="hint">左键框选 · 右键移动/攻击 · A 攻击移动 · D 展开 · S 停止 · X 出售 · Q/E 旋转 · Ctrl+数字 编队</span>
+    <span id="gameState" class="badge"></span>
+    <span id="diffBadge" class="badge diff"></span>
+    <button id="gearBtn" title="音频设置">⚙</button>
+    <div id="settings" class="hidden">
+      <div class="set-row"><span>音效</span><input id="sfxVol" type="range" min="0" max="100" value="80"></div>
+      <div class="set-row"><span>音乐</span><input id="musVol" type="range" min="0" max="100" value="50"></div>
+      <div class="set-row"><label><input id="muteChk" type="checkbox"> 静音（M）</label></div>
+    </div>
   </div>
+
   <div id="main">
-    <div id="canvasWrap"><canvas id="game"></canvas><div id="selbox"></div></div>
+    <div id="canvasWrap">
+      <canvas id="game"></canvas>
+      <div id="selbox"></div>
+      <div id="vignette"></div>
+      <div id="alertBanner">⚠ 遭到攻击</div>
+    </div>
     <div id="sidebar">
       <div id="tabs">
         <button class="tab active" data-tab="buildings">建筑</button>
         <button class="tab" data-tab="infantry">步兵</button>
         <button class="tab" data-tab="vehicles">载具</button>
+        <button class="tab" data-tab="tech">科技</button>
       </div>
       <div id="buildgrid"></div>
-      <canvas id="minimap" width="192" height="192"></canvas>
+      <div id="minimapWrap"><canvas id="minimap" width="192" height="192"></canvas></div>
       <div id="selinfo"></div>
     </div>
   </div>
+
+  <div id="tooltip" class="hidden"></div>
+
   <div id="overlay" class="hidden">
     <div id="overlayText"></div>
+    <div id="statsGrid"></div>
     <button id="restartBtn">再来一局</button>
   </div>
   <div id="errlog"></div>

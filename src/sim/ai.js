@@ -1,4 +1,6 @@
-// AI 指挥官：建造序列、爆兵、分波次进攻
+// AI 指挥官：难度分级、建造序列、爆兵、分波次进攻、基地防守反应
+
+import { UNITS, UPGRADES, DIFFS } from '../config.js';
 
 const BUILD_ORDER = [
   'power', 'refinery', 'barracks', 'factory', 'power',
@@ -6,13 +8,17 @@ const BUILD_ORDER = [
 ];
 
 export class Commander {
-  constructor(world, side = 'enemy') {
+  constructor(world, side = 'enemy', diff = 'normal') {
     this.world = world;
     this.side = side;
+    this.diff = DIFFS[diff] || DIFFS.normal;
     this.timer = 0;
     this.bi = 0;          // 建造序列进度
     this.armyCounter = 0; // 兵种轮换计数
     this.waveNo = 0;
+    this.waveCd = 500; // 开局 17s 缓冲
+    this.trickle = 0;
+    this.defendCd = 0;
   }
 
   tick() {
@@ -20,9 +26,16 @@ export class Commander {
     this.timer = 0;
     const w = this.world;
     if (w.winner) return;
+    // 难度运营补贴：高难度 AI 经济更顺（每 2s 结算一次）
+    if (++this.trickle >= 60) {
+      this.trickle = 0;
+      w.credits[this.side] += Math.round(this.diff.trickle * this.diff.incomeMul);
+    }
     this.macro();
     this.produceArmy();
     this.launchWaves();
+    this.defendBase();
+    this.research();
   }
 
   // 建筑序列 + 放置
@@ -75,7 +88,7 @@ export class Commander {
     }
   }
 
-  // 部队生产：保持矿车数量，其余按轮换爆兵
+  // 部队生产：保持矿车数量；玩家出空军时补对空；其余按轮换爆兵
   produceArmy() {
     const w = this.world, s = this.side;
     const buildings = w.buildingsOf(s);
@@ -88,21 +101,49 @@ export class Commander {
       let item;
       if (harvs < refs) item = 'harvester';
       else {
-        const cycle = ['tyrant', 'tyrant', 'hunter', 'tyrant'];
+        const playerAir = w.unitsOf('player').some(u => UNITS[u.type]?.fly);
+        const hasRadar = buildings.some(b => b.type === 'radar');
+        // 困难：更重的坦克海 + 雷达后补火箭炮；玩家有空军：掺弹炮车
+        let cycle = this.diff.incomeMul > 1.2
+          ? ['tyrant', 'tyrant', 'tyrant', 'hunter', 'tyrant']
+          : ['tyrant', 'tyrant', 'hunter', 'tyrant'];
+        if (hasRadar) cycle = [...cycle, 'mlrs', 'mlrs'];
+        if (playerAir) cycle = ['tyrant', 'hunter', 'hunter', 'tyrant'];
         item = cycle[this.armyCounter++ % cycle.length];
       }
       w.issueCommand(s, { type: 'produce', item });
     }
     if (barracks && barracks.queue.length < 1 && this.armyCounter % 2 === 0) {
-      w.issueCommand(s, { type: 'produce', item: this.armyCounter % 4 === 0 ? 'rocket' : 'rifle' });
+      w.issueCommand(s, { type: 'produce', item: this.armyCounter % 5 === 0 ? 'rocket' : 'rifle' });
     }
   }
 
-  // 进攻波次：攒够一拨就 A 过去
+  // 科技研发：钱有余裕就升级（困难全序研发，普通优先经济）
+  research() {
+    const w = this.world, s = this.side;
+    const radar = w.buildingsOf(s).find(b => b.type === 'radar');
+    if (!radar || radar.queue.length) return;
+    const owned = w.upgrades[s].owned;
+    const order = this.diff.incomeMul > 1.2
+      ? ['ap', 'mining', 'composite', 'engine']
+      : ['mining', 'ap'];
+    for (const id of order) {
+      if (owned.has(id)) continue;
+      const up = UPGRADES[id];
+      if (!w.hasPrereq(s, up)) continue;
+      if (w.credits[s] > up.cost + 700) {
+        w.issueCommand(s, { type: 'produce', item: id });
+      }
+      return;
+    }
+  }
+
+  // 进攻波次：攒够一拨、间隔冷却过后就 A 过去（规模随难度与波次增长）
   launchWaves() {
     const w = this.world, s = this.side;
+    if (this.waveCd > 0) { this.waveCd--; return; }
     const army = w.unitsOf(s).filter(u => u.weapon && !u.path && u.order?.type !== 'attackmove' && u.order?.type !== 'attack');
-    const need = Math.min(6 + this.waveNo * 2, 12);
+    const need = Math.min(this.diff.waveBase + this.waveNo * this.diff.waveStep, this.diff.maxWave);
     if (army.length < need) return;
     // 目标：优先玩家建造厂，其次任意玩家建筑
     const targets = w.buildingsOf('player');
@@ -111,5 +152,22 @@ export class Commander {
     const ids = army.map(u => u.id);
     w.issueCommand(s, { type: 'attackmove', ids, x: yard.x, y: yard.y });
     this.waveNo++;
+    this.waveCd = this.diff.waveGap;
+  }
+
+  // 基地防守：警报点在自家附近时，空闲部队回防（限频，防抽风）
+  defendBase() {
+    if (this.defendCd > 0) { this.defendCd--; return; }
+    const w = this.world, s = this.side;
+    const threat = w.alerts.find(a => a.side === s && a.ttl > 30);
+    if (!threat) return;
+    const base = w.buildingsOf(s)[0];
+    if (!base) return;
+    if (Math.hypot(threat.x - base.x, threat.y - base.y) > 18) return;
+    const defenders = w.unitsOf(s).filter(u =>
+      u.weapon && !u.path && u.order?.type !== 'attackmove' && u.order?.type !== 'attack').slice(0, 8);
+    if (!defenders.length) return;
+    w.issueCommand(s, { type: 'attackmove', ids: defenders.map(u => u.id), x: threat.x, y: threat.y });
+    this.defendCd = 90; // 3 秒内不再重复调动
   }
 }

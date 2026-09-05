@@ -1,19 +1,20 @@
-// 小地图：地形预渲染 + 实体点 + 迷雾 + 视口框，点击跳转
+// 小地图：地形预渲染 + 实体点 + 迷雾 + 视口框 + 雷达扫描 + 受击警报 ping，点击/拖动跳转视角
 
 import { T } from '../config.js';
 import { SIDE_COLORS } from './renderer.js';
 
 const MCOLORS = {
-  [T.GRASS]: '#2f4a2b', [T.TREE]: '#1d3a1a', [T.ROCK]: '#484852',
-  [T.WATER]: '#16324f', [T.ORE]: '#a8863a',
+  [T.GRASS]: '#31492c', [T.TREE]: '#1e3619', [T.ROCK]: '#474750',
+  [T.WATER]: '#152c44', [T.ORE]: '#a8863a',
 };
 
 export class Minimap {
-  constructor(canvas, world, camera) {
+  constructor(canvas, world, camera, game = null) {
     this.cv = canvas;
     this.ctx = canvas.getContext('2d');
     this.world = world;
     this.cam = camera;
+    this.game = game;
     this.scale = canvas.width / world.w; // 像素/瓦片
     this.frame = 0;
     this.prerender();
@@ -21,6 +22,7 @@ export class Minimap {
       const r = canvas.getBoundingClientRect();
       this.cam.x = (e.clientX - r.left) / this.scale;
       this.cam.y = (e.clientY - r.top) / this.scale;
+      if (this.game) this.game.userCam = true; // 小地图跳转 = 用户接管相机
     };
     canvas.addEventListener('mousedown', e => { jump(e); this.dragging = true; });
     canvas.addEventListener('mousemove', e => { if (this.dragging) jump(e); });
@@ -41,17 +43,41 @@ export class Minimap {
   }
 
   update(renderer) {
-    if (++this.frame % 15 !== 0) return; // 节流：每 0.5s
+    this.frame++;
+    if (this.frame % 10 !== 0) return; // 节流：每 1/3s
     const { ctx, world: w, scale: s } = this;
     ctx.drawImage(this.terrain, 0, 0);
 
-    // 实体点
+    // 雷达扫描线（建有雷达站后启用）
+    if (w.buildingsOf('player').some(b => b.type === 'radar')) {
+      const a = (performance.now() / 1200) % (Math.PI * 2);
+      const cx = this.cv.width / 2, cy = this.cv.height / 2;
+      const grad = ctx.createLinearGradient(cx, cy, cx + Math.cos(a) * cx, cy + Math.sin(a) * cy);
+      grad.addColorStop(0, 'rgba(126,231,135,0.28)');
+      grad.addColorStop(1, 'rgba(126,231,135,0)');
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(a) * cx, cy + Math.sin(a) * cy);
+      ctx.stroke();
+    }
+
+    // 实体点（建筑带外框，单位实心）
     for (const e of w.entities.values()) {
       const fogged = e.side !== 'player' && w.fog[w.idx(Math.floor(e.x), Math.floor(e.y))] < (e.kind === 'unit' ? 2 : 1);
       if (fogged) continue;
       ctx.fillStyle = SIDE_COLORS[e.side];
-      const sz = e.kind === 'building' ? 3 : 2;
-      ctx.fillRect(e.x * s - sz / 2, e.y * s - sz / 2, sz, sz);
+      if (e.kind === 'building') {
+        ctx.fillRect(e.x * s - 2.2, e.y * s - 2.2, 4.4, 4.4);
+        ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+        ctx.lineWidth = 0.8;
+        ctx.strokeRect(e.x * s - 2.2, e.y * s - 2.2, 4.4, 4.4);
+      } else {
+        ctx.beginPath();
+        ctx.arc(e.x * s, e.y * s, 1.6, 0, 7);
+        ctx.fill();
+      }
     }
 
     // 迷雾
@@ -63,10 +89,21 @@ export class Minimap {
         ctx.fillRect(tx * s, ty * s, s + 0.5, s + 0.5);
       }
 
+    // 受击警报 ping（红色扩散圈）
+    for (const a of w.alerts) {
+      if (a.side !== 'player') continue;
+      const k = 1 - a.ttl / a.max;
+      ctx.strokeStyle = `rgba(255,90,80,${(1 - k) * 0.9})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(a.x * s, a.y * s, 2 + k * 9, 0, 7);
+      ctx.stroke();
+    }
+
     // 视口范围：屏幕四角反投影到地面，画四边形（支持旋转视角）
     const pts = [[0, 0], [renderer.vw, 0], [renderer.vw, renderer.vh], [0, renderer.vh]]
       .map(([px, py]) => renderer.screenToTile(px, py));
-    ctx.strokeStyle = '#fff';
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     pts.forEach((p, i) => (i ? ctx.lineTo(p.x * s, p.y * s) : ctx.moveTo(p.x * s, p.y * s)));
