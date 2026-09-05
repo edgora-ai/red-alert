@@ -42,7 +42,8 @@ const DIRS = [
 ];
 
 // world 需暴露：w, h, idx(tx,ty), tiles, isBlocked(tx,ty)
-export function findPath(world, sx, sy, tx, ty, fly) {
+// maxExpand：单次搜索展开上限（大兵团跨帧摊销用，默认全图；繁忙时调小防卡顿）
+export function findPath(world, sx, sy, tx, ty, fly, maxExpand = Infinity) {
   sx = Math.floor(sx); sy = Math.floor(sy); tx = Math.floor(tx); ty = Math.floor(ty);
   if (fly) return [{ x: tx + 0.5, y: ty + 0.5 }];
   if (!world.inBounds(tx, ty)) return null;
@@ -63,13 +64,20 @@ export function findPath(world, sx, sy, tx, ty, fly) {
   open.push(start, 0);
   const closed = new Uint8Array(W * H);
   let found = false;
-  let guard = W * H * 4; // 防爆保护
+  let guard = Math.min(W * H * 4, maxExpand); // 防爆保护 + 跨帧预算熔断
+  let expanded = 0;
+
+  // 短距直连近道：8 格内直线无遮挡直接走（省掉 A* 开销，大兵团常用）
+  if (Math.abs(tx - sx) <= 8 && Math.abs(ty - sy) <= 8 && lineClear(world, sx, sy, tx, ty)) {
+    return [{ x: tx + 0.5, y: ty + 0.5 }];
+  }
 
   while (open.size && guard-- > 0) {
     const cur = open.pop();
     if (cur === goal) { found = true; break; }
     if (closed[cur]) continue;
     closed[cur] = 1;
+    if (++expanded >= maxExpand) break; // 预算用尽：降级直线逼近而非罚站
     const cx = cur % W, cy = (cur / W) | 0;
     const cg = gScore.get(cur);
 
@@ -90,7 +98,18 @@ export function findPath(world, sx, sy, tx, ty, fly) {
       }
     }
   }
-  if (!found) return null;
+  if (!found) {
+    // 预算熔断/不可达：能往目标方向蹭就蹭（取 open 中 h 最小的已见点），绝不罚站
+    let bestCur = null, bestH = Infinity;
+    for (const k of gScore.keys()) {
+      const h = Math.hypot(tx - (k % W), ty - ((k / W) | 0));
+      if (h < bestH) { bestH = h; bestCur = k; }
+    }
+    if (bestCur == null) return null;
+    const bx = (bestCur % W) + 0.5, by = ((bestCur / W) | 0) + 0.5;
+    if (Math.hypot(bx - (sx + 0.5), by - (sy + 0.5)) < 0.6) return null;
+    return [{ x: bx, y: by }];
+  }
 
   // 回溯路径（瓦片中心点），去掉起点
   const rev = [];
@@ -100,7 +119,41 @@ export function findPath(world, sx, sy, tx, ty, fly) {
     cur = came.get(cur);
   }
   rev.reverse();
-  return rev;
+  // 路径拉直：视线可达的中间点直接跳过（减少折线抖动 + 移动更快）
+  return smoothPath(world, sx + 0.5, sy + 0.5, rev);
+}
+
+// Bresenham 视线检测（瓦片中心连线无阻挡）
+function lineClear(world, x0, y0, x1, y1) {
+  let dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+  let err = dx - dy, x = x0, y = y0;
+  for (let i = 0; i < 64; i++) {
+    if (world.isBlocked(x, y)) return false;
+    if (x === x1 && y === y1) return true;
+    const e2 = err * 2;
+    if (e2 > -dy) { err -= dy; x += sx; }
+    if (e2 < dx) { err += dx; y += sy; }
+  }
+  return false;
+}
+
+function smoothPath(world, sx, sy, path) {
+  if (path.length < 3) return path;
+  const out = [];
+  let ax = sx, ay = sy;
+  let i = 0;
+  while (i < path.length) {
+    let j = path.length - 1;
+    for (; j > i; j--) {
+      const bx = Math.floor(path[j].x), by = Math.floor(path[j].y);
+      if (lineClear(world, Math.floor(ax), Math.floor(ay), bx, by)) break;
+    }
+    out.push(path[j]);
+    ax = path[j].x; ay = path[j].y;
+    i = j + 1;
+  }
+  return out;
 }
 
 export function nearestOpen(world, tx, ty, radius) {

@@ -104,7 +104,8 @@ export class UI {
       btn.insertAdjacentHTML('beforeend',
         `<span class="bname">${def.name}</span><span class="bcost">$${def.cost}</span>` +
         `<span class="bcount" style="display:none"></span><span class="block"></span><span class="bprog"></span>`);
-      btn.onclick = () => { this.game.userPlay = true; this.world.issueCommand('player', { type: 'produce', item }); };
+      // 左键下单（Shift=×5），右键取消一个
+      btn.onclick = (e) => { this.game.userPlay = true; this.world.issueCommand('player', { type: 'produce', item, n: e.shiftKey ? 5 : 1 }); };
       btn.oncontextmenu = e => { e.preventDefault(); this.game.userPlay = true; this.world.issueCommand('player', { type: 'cancelProduce', item }); };
       // 工具提示
       btn.onmouseenter = e => this.showTip(item, e);
@@ -174,9 +175,11 @@ export class UI {
       this.el.msg.style.opacity = 0;
     }
 
-    // 受击警报横幅（game.alertTtl 由 main 驱动衰减）
-    if (this.game.alertTtl > 0) {
+    // 受击警报横幅（game.alertTtl 由 main 驱动衰减；敌方超武预警期间强制显示）
+    const strikeIncoming = (w.strikeAlarm?.ttl ?? 0) > 0;
+    if (this.game.alertTtl > 0 || strikeIncoming) {
       this.el.alertBanner.style.display = 'block';
+      this.el.alertBanner.textContent = strikeIncoming ? '⚠ 轨道打击来袭 — 疏散！' : '⚠ 遭到攻击';
     } else {
       this.el.alertBanner.style.display = 'none';
     }
@@ -255,11 +258,14 @@ export class UI {
   updateSelInfo() {
     const sel = [...this.game.selection].map(id => this.world.entities.get(id)).filter(Boolean);
     if (!sel.length) { this.el.selinfo.innerHTML = '<span style="color:var(--dim)">点击单位查看详情</span>'; return; }
+    const STANCE = { hold: '固守', guard: '警戒', patrol: '巡逻', attackmove: '攻击移动', attack: '攻击', move: '移动', harvest: '采矿' };
     if (sel.length === 1) {
       const e = sel[0];
       const def = this.world.defOf(e);
       let html = `<b style="color:${SIDE_COLORS[e.side]}">${def.name}</b>　HP ${Math.ceil(e.hp)}/${Math.ceil(e.maxHp)}`;
       if ((e.level || 0) > 0) html += `　<span class="vet">★ 老兵 Lv${e.level + 1}</span>`;
+      if (e.kind === 'unit' && e.order?.type && e.order.type !== 'idle') html += `　${STANCE[e.order.type] || e.order.type}`;
+      if (e.kind === 'unit' && e.oq?.length) html += `　队列×${e.oq.length}（Shift 追加）`;
       if (e.kind === 'building' && e.queue?.length) html += `<br>生产中：${(UNITS[e.queue[0]] || BUILDINGS[e.queue[0]]).name} ×${e.queue.length}`;
       if (e.type === 'harvester') html += `<br>载矿：${Math.round(e.load || 0)}`;
       if (e.type === 'mcv') html += '<br>按 D 展开为建造厂';

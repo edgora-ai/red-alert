@@ -96,11 +96,12 @@ export const ECON = {
 // 老兵等级：击杀积攒经验，晋升提升火力与耐久（chevrons 渲染见 renderer）
 export const VET = { thresholds: [240, 640], dmgPerLevel: 0.15, hpPerLevel: 0.2 };
 
-// AI 难度：trickle = 每 2 秒被动资金（模拟更优运营），波次规模随难度增长，waveGap = 波次间隔 tick
+// AI 难度：trickle = 每 2 秒被动资金（模拟更优运营）；waveCd0 = 首波缓冲，waveGap = 波次间隔（均为 world tick，30/s）
+// 节奏曲线（职业 RTS 标准）：简单 6min 首波/5min 间隔·小波次；普通 3.5min/2.3min；困难 2min/70s 坦克海
 export const DIFFS = {
-  easy:   { name: '简单', trickle: 5,  waveBase: 5, waveStep: 1, maxWave: 10, incomeMul: 0.8, waveGap: 1400 },
-  normal: { name: '普通', trickle: 10, waveBase: 6, waveStep: 2, maxWave: 13, incomeMul: 1.0, waveGap: 1000 },
-  hard:   { name: '困难', trickle: 20, waveBase: 8, waveStep: 3, maxWave: 16, incomeMul: 1.3, waveGap: 700 },
+  easy:   { name: '简单', trickle: 4,  waveBase: 4, waveStep: 1, maxWave: 8,  incomeMul: 0.7, waveCd0: 10800, waveGap: 9000 },
+  normal: { name: '普通', trickle: 10, waveBase: 6, waveStep: 2, maxWave: 13, incomeMul: 1.0, waveCd0: 6300,  waveGap: 4200 },
+  hard:   { name: '困难', trickle: 20, waveBase: 8, waveStep: 3, maxWave: 16, incomeMul: 1.3, waveCd0: 3600,  waveGap: 2100 },
 };
 
 // 单位建造时间换算（秒 → tick）

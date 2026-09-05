@@ -62,6 +62,17 @@ startBtn.onclick = () => {
     if (ui) ui.el.diffBadge.textContent = `AI · ${ai.diff.name}`;
     startEl.classList.add('hidden');
     game.started = true;
+    // 开局引导（只播一次）：电厂→兵营→采矿三步走
+    world.messages.push({ side: 'player', text: '指挥官：建造发电厂，再建兵营与矿车，扩张采矿线！（B/N/C/K 切换建造页）', ttl: 420 });
+    // 开局编组：初始坦克编 1 队、步兵编 2 队（双击数字键跳视角）
+    try {
+      const tanks = world.unitsOf('player').filter(u => u.type === 'cheetah' || u.type === 'tyrant').map(u => u.id);
+      const infs = world.unitsOf('player').filter(u => u.type === 'rifle' || u.type === 'rocket').map(u => u.id);
+      if (input) {
+        if (tanks.length) input.groups['1'] = tanks;
+        if (infs.length) input.groups['2'] = infs;
+      }
+    } catch { /* 编组失败不挡开局 */ }
   } catch (e) { showFatal(e.message); console.error(e); }
 };
 // 无交互环境（自动化）直接开战
@@ -73,6 +84,11 @@ try {
   input = new Input(game, canvas, world, camera, sound, renderer);
   ui = new UI(game, world, sound, renderer);
   ui.bindSuper(() => input.startSuperTarget());
+  // 小地图右键 = 同主画布右键语义（移动/攻击/排队，rightCommand 内已打点），左键仍是跳视角
+  minimap.bindCmd((x, y, queued) => {
+    game.userPlay = true;
+    input.rightCommand(x, y, queued);
+  });
   window.addEventListener('resize', () => renderer?.resize());
 } catch (e) {
   showFatal(e.message);

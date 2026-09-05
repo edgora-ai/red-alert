@@ -18,7 +18,27 @@ export class Input {
     this.selboxEl = document.getElementById('selbox');
 
     canvas.addEventListener('contextmenu', e => e.preventDefault());
-    canvas.addEventListener('mousedown', e => this.onDown(e));
+    // 中键拖拽平移视角（经典 RTS 右键拖屏的替代，右键已用于命令）
+    canvas.addEventListener('mousedown', e => {
+      if (e.button === 1) {
+        e.preventDefault();
+        this.panDrag = { x: e.clientX, y: e.clientY, cx: this.cam.x, cy: this.cam.y };
+        this.game.userCam = true;
+        return;
+      }
+      this.onDown(e);
+    });
+    window.addEventListener('mousemove', e => {
+      if (this.panDrag) {
+        const dx = (e.clientX - this.panDrag.x) / Math.max(1, this.renderer.vw) * this.cam.dist * 1.1;
+        const dy = (e.clientY - this.panDrag.y) / Math.max(1, this.renderer.vw) * this.cam.dist * 1.1;
+        const fx = -Math.sin(this.cam.yaw), fy = -Math.cos(this.cam.yaw);
+        const rx = -fy, ry = fx;
+        this.cam.x = Math.min(this.world.w, Math.max(0, this.panDrag.cx - (rx * dx + fx * dy)));
+        this.cam.y = Math.min(this.world.h, Math.max(0, this.panDrag.cy - (ry * dx + fy * dy)));
+      }
+    });
+    window.addEventListener('mouseup', e => { if (e.button === 1) this.panDrag = null; });
     // 拖拽跟踪挂 window：拖出画布也能继续/完成框选
     window.addEventListener('mousemove', e => this.onMove(e));
     window.addEventListener('mouseup', e => this.onUp(e));
@@ -89,23 +109,33 @@ export class Input {
         w.issueCommand('player', { type: 'build', tx: t.x, ty: t.y });
         return;
       }
-      // A 攻击移动模式
+      // A 攻击移动模式（Shift=排队追加，不退出模式）
       if (this.attackMove) {
         const ids = this.selectedUnits().map(u => u.id);
         if (ids.length) {
-          w.issueCommand('player', { type: 'attackmove', ids, x: t.x, y: t.y });
+          w.issueCommand('player', { type: 'attackmove', ids, x: t.x, y: t.y, queued: e.shiftKey });
           this.game.markers.push({ x: t.x, y: t.y, type: 'attack', ttl: 30, max: 30 });
         }
-        this.attackMove = false;
-        this.updateCursorState();
+        if (!e.shiftKey) { this.attackMove = false; this.updateCursorState(); }
+        return;
+      }
+      // R 巡逻模式：左键定第二点（Shift=排队追加）
+      if (this.patrolMode) {
+        const ids = this.selectedUnits().filter(u => u.type !== 'harvester').map(u => u.id);
+        if (ids.length) {
+          w.issueCommand('player', { type: 'patrol', ids, x: t.x, y: t.y, queued: e.shiftKey });
+          this.game.markers.push({ x: t.x, y: t.y, type: 'move', ttl: 30, max: 30 });
+        }
+        if (!e.shiftKey) { this.patrolMode = false; this.updateCursorState(); }
         return;
       }
       this.dragStart = { x: px, y: py, shift: e.shiftKey };
     } else if (e.button === 2) {
       if (this.superTarget) { this.superTarget = false; this.updateCursorState(); return; }
       if (w.sides.player.placing) { w.issueCommand('player', { type: 'cancelPlace' }); return; }
-      if (this.attackMove) { this.attackMove = false; this.updateCursorState(); return; }
-      this.rightCommand(t.x, t.y);
+      if (this.attackMove && !e.shiftKey) { this.attackMove = false; this.updateCursorState(); return; }
+      if (this.patrolMode && !e.shiftKey) { this.patrolMode = false; this.updateCursorState(); return; }
+      this.rightCommand(t.x, t.y, e.shiftKey);
     }
   }
 
@@ -124,7 +154,7 @@ export class Input {
     this.updateCursorState();
   }
 
-  rightCommand(wx, wy) {
+  rightCommand(wx, wy, queued = false) {
     const w = this.world;
     const units = this.selectedUnits();
     const buildings = this.selectedBuildings();
@@ -141,8 +171,17 @@ export class Input {
     const ids = units.map(u => u.id);
     const target = this.pickAt(wx, wy);
 
+    // 巡逻模式：右键定第二点
+    if (this.patrolMode && units.some(u => u.type !== 'harvester')) {
+      const cids = units.filter(u => u.type !== 'harvester').map(u => u.id);
+      w.issueCommand('player', { type: 'patrol', ids: cids, x: wx, y: wy, queued });
+      this.game.markers.push({ x: wx, y: wy, type: 'move', ttl: 30, max: 30 });
+      if (!queued) { this.patrolMode = false; this.updateCursorState(); }
+      return;
+    }
+
     if (target && target.side !== 'player') {
-      w.issueCommand('player', { type: 'attack', ids, targetId: target.id });
+      w.issueCommand('player', { type: 'attack', ids, targetId: target.id, queued });
       this.game.markers.push({ x: wx, y: wy, type: 'attack', ttl: 30, max: 30 });
       return;
     }
@@ -151,13 +190,15 @@ export class Input {
       // 点到矿区：矿车去采矿，其余选中单位移动到同一点（经典红警行为）
       const harvIds = units.filter(u => u.type === 'harvester').map(u => u.id);
       const otherIds = ids.filter(id => !harvIds.includes(id));
-      w.issueCommand('player', { type: 'harvest', ids: harvIds });
-      if (otherIds.length) w.issueCommand('player', { type: 'move', ids: otherIds, x: wx, y: wy });
+      w.issueCommand('player', { type: 'harvest', ids: harvIds, queued });
+      if (otherIds.length) w.issueCommand('player', { type: 'move', ids: otherIds, x: wx, y: wy, queued });
       this.game.markers.push({ x: wx, y: wy, type: 'move', ttl: 30, max: 30 });
       return;
     }
-    w.issueCommand('player', { type: 'move', ids, x: wx, y: wy });
-    this.game.markers.push({ x: wx, y: wy, type: 'move', ttl: 30, max: 30 });
+    const am = this.attackMove ? 'attackmove' : 'move';
+    w.issueCommand('player', { type: am, ids, x: wx, y: wy, queued });
+    this.game.markers.push({ x: wx, y: wy, type: am === 'attackmove' ? 'attack' : 'move', ttl: 30, max: 30 });
+    if (!queued && this.attackMove) { this.attackMove = false; this.updateCursorState(); }
   }
 
   onMove(e) {
@@ -205,18 +246,31 @@ export class Input {
       const b = this.s2t(Math.max(box.x0, box.x1), Math.max(box.y0, box.y1));
       const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x);
       const y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y);
-      const ids = this.world.unitsOf('player')
-        .filter(u => u.x >= x0 && u.x <= x1 && u.y >= y0 && u.y <= y1)
-        .map(u => u.id);
+      let units = this.world.unitsOf('player')
+        .filter(u => u.x >= x0 && u.x <= x1 && u.y >= y0 && u.y <= y1);
+      // 框到混合部队：只留战斗单位（矿车/MCV 不参战，避免一波 A 把经济送掉）
+      const combat = units.filter(u => u.weapon);
+      if (combat.length && combat.length < units.length) units = combat;
+      const ids = units.map(u => u.id);
       if (!shift) this.game.selection.clear();
       ids.forEach(id => this.game.selection.add(id));
       if (ids.length) { this.sound.play({ type: 'select' }); this.game.userPlay = true; }
       return;
     }
 
-    // 点选（双击同类 = 全选屏内该型单位）
+    // 点选（双击同类 = 全选屏内该型单位；Ctrl+点 = 全选屏内同类追加）
     const t = this.s2t(cx, cy);
     const picked = this.pickAt(t.x, t.y);
+    const ctrl = e.ctrlKey || e.metaKey;
+    if (picked && picked.side === 'player' && ctrl && picked.kind === 'unit') {
+      const ids = this.world.unitsOf('player')
+        .filter(u => u.type === picked.type && this.onScreen(u)).map(u => u.id);
+      if (!shift) this.game.selection.clear();
+      ids.forEach(id => this.game.selection.add(id));
+      this.game.userPlay = true;
+      this.sound.play({ type: 'select' });
+      return;
+    }
     if (!shift) this.game.selection.clear();
     if (picked && picked.side === 'player') {
       this.game.selection.add(picked.id);
@@ -260,6 +314,31 @@ export class Input {
       const ids = this.selectedUnits().map(u => u.id);
       switch (k) {
         case 'a': if (ids.length) this.attackMove = true; break;
+        case 'r': // 巡逻模式：再左键/右键定第二点（Shift=排队追加，右键/Esc退出）
+          if (this.selectedUnits().some(u => u.type !== 'harvester')) { this.patrolMode = true; this.attackMove = false; } break;
+        case 'g': // 固守/警戒切换：HOLD 原地开火 → GUARD 小范围追击，来回切
+          if (ids.length) w.issueCommand('player', { type: 'hold', ids }); break;
+        case 'f': { // 选中空闲战斗单位（再按轮切下一个，Shift=追加选中）
+          const idle = w.unitsOf('player').filter(u => u.weapon && (!u.order || u.order.type === 'idle') && (!u.oq || !u.oq.length));
+          if (idle.length) {
+            this.idleIdx = ((this.idleIdx ?? -1) + 1) % idle.length;
+            const pick = idle[this.idleIdx % idle.length];
+            if (e.shiftKey) this.game.selection.add(pick.id);
+            else this.game.selection = new Set([pick.id]);
+            this.cam.x = pick.x; this.cam.y = pick.y; this.game.userCam = true;
+            this.sound.play({ type: 'select' });
+          }
+          break;
+        }
+        case 'i': { // 选中空闲采矿车
+          const harvs = w.unitsOf('player').filter(u => u.type === 'harvester' && u.harvest?.state === 'idle' && !u.path);
+          if (harvs.length) {
+            if (e.shiftKey) harvs.forEach(u => this.game.selection.add(u.id));
+            else this.game.selection = new Set(harvs.map(u => u.id));
+            this.sound.play({ type: 'select' });
+          }
+          break;
+        }
         case 'v': this.startSuperTarget(); break;
         case 's': w.issueCommand('player', { type: 'stop', ids }); break;
         case 'd': w.issueCommand('player', { type: 'deploy', ids }); break;
@@ -271,6 +350,18 @@ export class Input {
           }
           break;
         }
+        case 'y': { // 全选所有战斗单位（跨屏，经典 Ctrl+T 变体）
+          const ids2 = w.unitsOf('player').filter(u => u.weapon).map(u => u.id);
+          if (ids2.length) {
+            this.game.selection = new Set(ids2);
+            this.sound.play({ type: 'select' });
+          }
+          break;
+        }
+        case 'b': document.querySelector('.tab[data-tab="buildings"]')?.click(); break; // 建筑页
+        case 'n': document.querySelector('.tab[data-tab="infantry"]')?.click(); break;  // 步兵页
+        case 'c': document.querySelector('.tab[data-tab="vehicles"]')?.click(); break;  // 载具页
+        case 'k': document.querySelector('.tab[data-tab="tech"]')?.click(); break;       // 科技页
         case 'x': {
           const b = this.selectedBuildings()[0];
           if (b) { w.issueCommand('player', { type: 'sell', id: b.id }); this.game.selection.delete(b.id); }
@@ -289,6 +380,7 @@ export class Input {
           if (w.sides.player.placing) w.issueCommand('player', { type: 'cancelPlace' });
           this.attackMove = false;
           this.superTarget = false;
+          this.patrolMode = false;
           break;
         case ' ': { // 空格：跳到最近一次受击警报点
           const al = w.alerts.filter(a => a.side === 'player');
@@ -322,16 +414,16 @@ export class Input {
       }
       this.updateCursorState();
       // 命令类按键 = 玩家接管（演示模式停止自动化）
-      if (['a', 's', 'd', 'x', 't', 'v'].includes(k) || /^[1-9]$/.test(k)) this.game.userPlay = true;
+      if (['a', 'r', 'g', 'f', 'i', 's', 'd', 'x', 't', 'y', 'v'].includes(k) || /^[1-9]$/.test(k)) this.game.userPlay = true;
     } else {
       this.keys.delete(k);
     }
   }
 
-  // 光标状态：攻击移动/指向敌人时用红色攻击光标；超武瞄准用十字光标
+  // 光标状态：攻击移动/巡逻/指向敌人时用红色攻击光标；超武瞄准用十字光标
   updateCursorState() {
     const armed = this.selectedUnits().some(u => u.weapon);
-    const attacking = this.superTarget || this.attackMove || (armed && this.hoverEnemy);
+    const attacking = this.superTarget || this.attackMove || this.patrolMode || (armed && this.hoverEnemy);
     this.cv.classList.toggle('cursor-attack', !!attacking);
     this.cv.classList.toggle('cursor-super', !!this.superTarget);
   }
@@ -350,8 +442,8 @@ export class Input {
     if (this.keys.has('arrowdown')) { mx -= fx; my -= fy; }
     if (this.keys.has('arrowleft')) { mx -= rx; my -= ry; }
     if (this.keys.has('arrowright')) { mx += rx; my += ry; }
-    // 边缘滚动（框选拖拽中禁用，防止视野跑偏）
-    if (this.mouse.inside && !this.dragStart) {
+    // 边缘滚动（框选/中键拖屏中禁用，防止视野跑偏）
+    if (this.mouse.inside && !this.dragStart && !this.panDrag) {
       const m = 26;
       if (this.mouse.x < m) { mx -= rx; my -= ry; }
       if (this.mouse.x > this.renderer.vw - m) { mx += rx; my += ry; }

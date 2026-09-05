@@ -135,8 +135,28 @@ export class World {
   }
 
   // 受击警报：玩家侧弹警报消息/小地图红点；双方都记录供 AI 防守判读
+  // 矿车被打：丢下矿石逃向最近精炼厂（经典 RTS 保矿车行为）
   onDamaged(target, src) {
     if (src && src.side === target.side) return;
+    if (target.kind === 'unit' && target.type === 'harvester' && src && !target.dead) {
+      if ((target.fleeCd ?? 0) <= this.tickCount) {
+        target.fleeCd = this.tickCount + 60;
+        let best = null, bestD = Infinity;
+        for (const b of this.entities.values()) {
+          if (b.kind !== 'building' || b.side !== target.side || b.dead) continue;
+          if (!this.buildingDef(b).refinery) continue;
+          const d = dist(target.x, target.y, b.x, b.y);
+          if (d < bestD) { bestD = d; best = b; }
+        }
+        if (best) {
+          target.oq = [];
+          target.harvest = { state: 'idle', timer: 0 };
+          target.order = { type: 'move', x: best.x, y: best.y };
+          target.targetId = null;
+          this.setPath(target, best.x, best.y);
+        }
+      }
+    }
     this.alerts.push({ x: target.x, y: target.y, ttl: 75, max: 75, side: target.side });
     if (target.side !== 'player') return;
     if (this.tickCount - (this.lastAlarmTick ?? -999) < 110) return;
@@ -177,15 +197,17 @@ export class World {
   // ---------- 命令 ----------
   issueCommand(side, cmd) {
     switch (cmd.type) {
-      case 'produce': return this.cmdProduce(side, cmd.item);
+      case 'produce': return this.cmdProduce(side, cmd.item, cmd.n);
       case 'cancelProduce': return this.cmdCancel(side, cmd.item);
       case 'build': return this.cmdPlace(side, cmd.tx, cmd.ty);
       case 'cancelPlace': return this.cmdCancelPlace(side);
-      case 'move': return this.cmdMove(side, cmd.ids, cmd.x, cmd.y, 'move');
-      case 'attackmove': return this.cmdMove(side, cmd.ids, cmd.x, cmd.y, 'attackmove');
-      case 'attack': return this.cmdAttack(side, cmd.ids, cmd.targetId);
-      case 'harvest': return this.cmdHarvest(side, cmd.ids, cmd.x, cmd.y);
-      case 'capture': return this.cmdCapture(side, cmd.ids, cmd.targetId);
+      case 'move': return this.cmdMove(side, cmd.ids, cmd.x, cmd.y, 'move', cmd.queued);
+      case 'attackmove': return this.cmdMove(side, cmd.ids, cmd.x, cmd.y, 'attackmove', cmd.queued);
+      case 'attack': return this.cmdAttack(side, cmd.ids, cmd.targetId, cmd.queued);
+      case 'harvest': return this.cmdHarvest(side, cmd.ids, cmd.x, cmd.y, cmd.queued);
+      case 'capture': return this.cmdCapture(side, cmd.ids, cmd.targetId, cmd.queued);
+      case 'patrol': return this.cmdPatrol(side, cmd.ids, cmd.x, cmd.y, cmd.queued);
+      case 'hold': return this.cmdHold(side, cmd.ids, cmd.queued);
       case 'deploy': return this.cmdDeploy(side, cmd.ids);
       case 'stop': return this.cmdStop(side, cmd.ids);
       case 'rally': return this.cmdRally(side, cmd.id, cmd.x, cmd.y);
@@ -213,18 +235,25 @@ export class World {
     return { ok: true, producer };
   }
 
-  cmdProduce(side, item) {
-    const chk = this.canProduce(side, item);
-    if (!chk.ok) {
-      if (side === 'player') { this.messages.push({ side, text: chk.reason, ttl: 90 }); this.events.push({ type: 'error' }); }
-      return false;
-    }
+  cmdProduce(side, item, n = 1) {
     const def = UNITS[item] || BUILDINGS[item] || UPGRADES[item];
-    this.credits[side] -= def.cost;
-    this.stats[side].spent += def.cost;
-    chk.producer.queue.push(item);
-    this.events.push({ type: 'select' });
-    return true;
+    if (!def) return false;
+    // Shift×5：按 Shift 连点一次排 5 个（钱不够排到空为止）
+    n = UPGRADES[item] ? 1 : Math.max(1, Math.min(5, n | 0));
+    let made = 0;
+    for (let i = 0; i < n; i++) {
+      const chk = this.canProduce(side, item);
+      if (!chk.ok) {
+        if (side === 'player' && made === 0) { this.messages.push({ side, text: chk.reason, ttl: 90 }); this.events.push({ type: 'error' }); }
+        break;
+      }
+      this.credits[side] -= def.cost;
+      this.stats[side].spent += def.cost;
+      chk.producer.queue.push(item);
+      made++;
+    }
+    if (made) this.events.push({ type: 'select' });
+    return made > 0;
   }
 
   cmdCancel(side, item) {
@@ -306,48 +335,115 @@ export class World {
     return true;
   }
 
-  cmdMove(side, ids, x, y, mode) {
+  cmdMove(side, ids, x, y, mode, queued = false) {
     const offs = groupOffsets(ids.length);
     ids.forEach((id, i) => {
       const u = this.entities.get(id);
       if (!u || u.kind !== 'unit' || u.side !== side || u.dead) return;
       if (u.type === 'harvester' && mode === 'attackmove') return; // 采矿车不理会攻击移动，继续干活
+      const order = { type: mode, x: x + offs[i].x, y: y + offs[i].y };
+      if (queued && u.order && u.order.type !== 'idle') { u.oq ??= []; u.oq.push(order); this.events.push({ type: 'move' }); return; }
       if (u.type === 'harvester' && mode === 'move') u.harvest = { state: 'idle', timer: 0 }; // 手动打断采矿
-      u.order = { type: mode, x, y };
+      u.oq = []; // 新指令清空旧队列（Shift 追加走 queued 分支）
+      u.order = order;
       u.targetId = null;
       this.setPath(u, x + offs[i].x, y + offs[i].y, mode === 'move');
     });
     this.events.push({ type: 'move' });
   }
 
-  cmdAttack(side, ids, targetId) {
+  // 排队指令：Shift+右键追加，不打断当前任务
+  queueOrder(u, order) {
+    u.oq ??= [];
+    if (u.oq.length > 12) u.oq.shift(); // 队列上限，防刷屏卡死
+    u.oq.push(order);
+    this.events.push({ type: 'move' });
+  }
+
+  // 从队列取下一条指令并执行；返回 false 表示队列已空
+  popQueued(u) {
+    const oq = u.oq;
+    if (!oq || !oq.length) return false;
+    const nx = oq.shift();
+    if (nx.type === 'move' || nx.type === 'attackmove') {
+      if (u.type === 'harvester' && nx.type === 'attackmove') return this.popQueued(u);
+      u.order = nx; u.targetId = nx.targetId ?? null;
+      this.setPath(u, nx.x, nx.y, nx.type === 'move');
+      return true;
+    }
+    if (nx.type === 'attack' || nx.type === 'capture') {
+      const t = this.entities.get(nx.targetId);
+      if (!t || t.dead) return this.popQueued(u); // 目标已没，跳过
+      u.order = nx; u.targetId = nx.targetId;
+      return true;
+    }
+    if (nx.type === 'patrol') { u.order = nx; u.targetId = null; this.setPath(u, nx.x2, nx.y2); return true; }
+    if (nx.type === 'guard' || nx.type === 'hold') { u.order = nx; u.path = null; u.targetId = null; return true; }
+    if (nx.type === 'harvest') { u.harvest = { state: 'idle', timer: 0 }; u.order = { type: 'harvest' }; return true; }
+    return false;
+  }
+
+  cmdPatrol(side, ids, x, y, queued = false) {
+    for (const id of ids) {
+      const u = this.entities.get(id);
+      if (!u || u.kind !== 'unit' || u.side !== side || u.dead) continue;
+      if (u.type === 'harvester') continue;
+      const order = { type: 'patrol', x1: u.x, y1: u.y, x2: x, y2: y, leg: 1 };
+      if (queued && u.order && u.order.type !== 'idle') { this.queueOrder(u, order); continue; }
+      u.oq = [];
+      u.order = order; u.targetId = null;
+      this.setPath(u, x, y);
+    }
+    this.events.push({ type: 'move' });
+  }
+
+  cmdHold(side, ids, queued = false) {
+    for (const id of ids) {
+      const u = this.entities.get(id);
+      if (!u || u.kind !== 'unit' || u.side !== side || u.dead) continue;
+      const order = { type: u.order?.type === 'hold' ? 'guard' : 'hold', x: u.x, y: u.y };
+      // hold = 原地坚守（只打射程内）；再按一次 = guard = 小范围追击后返回
+      if (queued && u.order && u.order.type !== 'idle') { this.queueOrder(u, order); continue; }
+      u.oq = [];
+      u.order = order; u.path = null; u.targetId = null;
+    }
+    this.events.push({ type: 'move' });
+  }
+
+  cmdAttack(side, ids, targetId, queued = false) {
     const t = this.entities.get(targetId);
     if (!t) return;
     for (const id of ids) {
       const u = this.entities.get(id);
       if (!u || u.kind !== 'unit' || u.side !== side || u.dead) continue;
       const def = UNITS[u.type];
-      if (def.capture && t.kind === 'building' && t.side !== side) { this.cmdCapture(side, [id], targetId); continue; }
+      if (def.capture && t.kind === 'building' && t.side !== side) { this.cmdCapture(side, [id], targetId, queued); continue; }
+      if (queued && u.order && u.order.type !== 'idle') { this.queueOrder(u, { type: 'attack', targetId }); continue; }
+      u.oq = [];
       u.order = { type: 'attack' };
       u.targetId = targetId;
     }
     this.events.push({ type: 'move' });
   }
 
-  cmdHarvest(side, ids, x, y) {
+  cmdHarvest(side, ids, x, y, queued = false) {
     for (const id of ids) {
       const u = this.entities.get(id);
       if (!u || u.type !== 'harvester' || u.side !== side || u.dead) continue;
+      if (queued && u.order && u.order.type !== 'idle' && u.order.type !== 'harvest') { this.queueOrder(u, { type: 'harvest' }); continue; }
+      u.oq = [];
       u.harvest = { state: 'idle', timer: 0 };
       u.order = { type: 'harvest' };
     }
     this.events.push({ type: 'move' });
   }
 
-  cmdCapture(side, ids, targetId) {
+  cmdCapture(side, ids, targetId, queued = false) {
     for (const id of ids) {
       const u = this.entities.get(id);
       if (!u || u.side !== side || u.dead || !UNITS[u.type].capture) continue;
+      if (queued && u.order && u.order.type !== 'idle') { this.queueOrder(u, { type: 'capture', targetId }); continue; }
+      u.oq = [];
       u.order = { type: 'capture', targetId };
     }
   }
@@ -378,6 +474,7 @@ export class World {
     for (const id of ids) {
       const u = this.entities.get(id);
       if (!u || u.kind !== 'unit' || u.side !== side || u.dead) continue;
+      u.oq = []; // 停止=清空队列
       u.order = { type: 'idle' };
       u.path = null; u.targetId = null;
       if (u.type === 'harvester') u.order = { type: 'harvest' };
@@ -407,9 +504,15 @@ export class World {
     x = clamp(x, 1, this.w - 1); y = clamp(y, 1, this.h - 1);
     this.superCd[side] = ECON.super.cooldown;
     this.fx.push({ type: 'superAim', x, y, ttl: ECON.super.delay * 2, max: ECON.super.delay * 2, side });
-    this.strikes.push({ x, y, t: ECON.super.delay });
+    this.strikes.push({ x, y, t: ECON.super.delay, side });
     this.events.push({ type: 'superLaunch', x, y });
     if (side === 'player') this.messages.push({ side, text: '轨道动能炮已锁定目标', ttl: 90 });
+    else {
+      // 敌方超武预警：给玩家 1.7s 拉开部队的公平机会（职业级标配）
+      this.messages.push({ side: 'player', text: '⚠ 侦测到敌方轨道打击充能！立即疏散部队！', ttl: 150 });
+      this.events.push({ type: 'underAttack', x, y });
+      this.strikeAlarm = { x, y, ttl: ECON.super.delay };
+    }
     return true;
   }
 
@@ -452,6 +555,36 @@ export class World {
     }
   }
 
+  // 编队分离：同高度层单位半径互斥，避免大兵团叠罗汉（空间哈希 O(n)）
+  separateUnits() {
+    const grid = new Map();
+    for (const u of this.entities.values()) {
+      if (u.kind !== 'unit' || u.dead) continue;
+      const k = (Math.floor(u.x * 2) * 1000 + Math.floor(u.y * 2));
+      let cell = grid.get(k);
+      if (!cell) grid.set(k, (cell = []));
+      cell.push(u);
+    }
+    const R = 0.42, R2 = R * R;
+    for (const cell of grid.values()) {
+      for (let i = 0; i < cell.length; i++) {
+        const a = cell[i];
+        const aFly = !!UNITS[a.type]?.fly;
+        for (let j = i + 1; j < cell.length; j++) {
+          const b = cell[j];
+          if (!!UNITS[b.type]?.fly !== aFly) continue; // 空地分层
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 >= R2 || d2 < 1e-8) continue;
+          const d = Math.sqrt(d2);
+          const push = ((R - d) / d) * 0.06;
+          const px = dx * push, py = dy * push;
+          a.x -= px; a.y -= py; b.x += px; b.y += py;
+        }
+      }
+    }
+  }
+
   // ---------- 寻路/移动 ----------
   setPath(u, x, y, snap = true) {
     const def = UNITS[u.type];
@@ -471,19 +604,62 @@ export class World {
     return true;
   }
 
+  // 巡逻：两点往返，接敌停火（combat 开火不追击），战后继续走当前腿——
+  // 只有真正抵达腿终点才翻腿，被战斗打断只重寻同一腿，避免来回抽风
+  updatePatrol(u) {
+    if (u.targetId) { u.path = null; return; }
+    if (u.path) return;
+    const tx = u.order.leg ? u.order.x2 : u.order.x1;
+    const ty = u.order.leg ? u.order.y2 : u.order.y1;
+    if (dist(u.x, u.y, tx, ty) > 1.2) { this.setPath(u, tx, ty); return; }
+    u.order.leg = u.order.leg === 1 ? 0 : 1;
+    const nx = u.order.leg ? u.order.x2 : u.order.x1;
+    const ny = u.order.leg ? u.order.y2 : u.order.y1;
+    this.setPath(u, nx, ny);
+  }
+
+  // 固守(hold)：原地开火绝不移动；警戒(guard)：锚点 8 格内追击，超出即回位
+  updateStance(u) {
+    const o = u.order;
+    if (o.type === 'hold') { u.path = null; return; }
+    const ax = o.x, ay = o.y;
+    const t = u.targetId != null ? this.entities.get(u.targetId) : null;
+    if (t && !t.dead) {
+      if (dist(t.x, t.y, ax, ay) > 8) u.targetId = null; // 牵引绳：放掉跑远的
+      else if (!u.path && (u.repathCd = (u.repathCd || 0) - 1) <= 0) {
+        u.repathCd = 15;
+        this.setPath(u, t.x, t.y);
+      }
+      return;
+    }
+    if (dist(u.x, u.y, ax, ay) > 0.8 && !u.path) this.setPath(u, ax, ay);
+  }
+
+  // 抵达后推进队列；返回 true 表示还有后续/循环指令
+  arriveAdvance(u) {
+    if (this.popQueued(u)) return true;
+    u.order = u.type === 'harvester' ? { type: 'harvest' } : { type: 'idle' };
+    return false;
+  }
+
   updateMovement(u) {
     if (!u.path) return;
     const wp = u.path[u.pathi];
-    if (!wp) { u.path = null; return; }
+    if (!wp) { // 空路径（同格下单）：直接推进队列而非罚站
+      u.path = null;
+      if (u.order?.type === 'move' || u.order?.type === 'attackmove') this.arriveAdvance(u);
+      return;
+    }
     const step = (u.speed * (this.upgrades[u.side]?.speed || 1)) / TICK_RATE;
     const d = dist(u.x, u.y, wp.x, wp.y);
     if (d <= step) {
       u.x = wp.x; u.y = wp.y;
       if (++u.pathi >= u.path.length) {
         u.path = null;
-        if (u.order?.type === 'move') {
-          // 矿车被手动移动到位后，恢复自动采矿
-          u.order = u.type === 'harvester' ? { type: 'harvest' } : { type: 'idle' };
+        if (u.order?.type === 'move') this.arriveAdvance(u);
+        else if (u.order?.type === 'attackmove') {
+          if (dist(u.x, u.y, u.order.x, u.order.y) <= 1.5) this.arriveAdvance(u);
+          else this.setPath(u, u.order.x, u.order.y); // 被挡停就地重寻
         }
       }
       return;
@@ -637,15 +813,20 @@ export class World {
         else if (e.order?.type === 'attackmove' && !e.targetId && !e.path && dist(e.x, e.y, e.order.x, e.order.y) > 1.5) {
           this.setPath(e, e.order.x, e.order.y);
         }
+        else if (e.order?.type === 'patrol') this.updatePatrol(e);
+        else if ((e.order?.type === 'hold' || e.order?.type === 'guard') && e.weapon && !e.path) this.updateStance(e);
         if (e.weapon) updateCombat(this, e);
+        else if (!e.path && (e.order?.type === 'move' || e.order?.type === 'attackmove')) this.arriveAdvance(e);
       } else {
         this.updateProduction(e);
         if (e.weapon) updateCombat(this, e);
       }
     }
 
+    this.separateUnits();
     updateProjectiles(this);
     this.updateStrikes();
+    if (this.strikeAlarm && --this.strikeAlarm.ttl <= 0) this.strikeAlarm = null;
     this.updateRepairPads();
     if (this.tickCount % ECON.neutral.period === 0) this.updateNeutralIncome();
     for (const s of ['player', 'enemy']) if (this.superCd[s] > 0) this.superCd[s]--;

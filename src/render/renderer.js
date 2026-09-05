@@ -951,6 +951,9 @@ export class Renderer {
       this.rallyLine.visible = this.rallyFlag.visible = false;
     }
 
+    // Shift 队列航线：选中单位当前指令 + 排队点连线（职业玩家刚需）
+    this.syncQueueLines(game, w);
+
     // 放置幽灵（呼吸闪烁）
     const item = w.sides.player.placing;
     if (item && game.mouseTile) {
@@ -969,6 +972,87 @@ export class Renderer {
       this.ghostBox.visible = this.ghostEdge.visible = true;
     } else {
       this.ghostBox.visible = this.ghostEdge.visible = false;
+    }
+  }
+
+  // ---------- Shift 队列航线 + 姿态标识（选中单位才画，10 帧重建一次） ----------
+  syncQueueLines(game, w) {
+    if (!this.qGroup) {
+      this.qGroup = new THREE.Group();
+      this.qGroup.frustumCulled = false;
+      this.scene.add(this.qGroup);
+      this._qWpGeo = new THREE.RingGeometry(0.13, 0.21, 16);
+      this._qWpMat = new THREE.MeshBasicMaterial({ color: 0x7ee787, side: THREE.DoubleSide, transparent: true, opacity: 0.9, depthWrite: false });
+      this._qLineMat = new THREE.LineBasicMaterial({ color: 0x7ee787, transparent: true, opacity: 0.55 });
+      this._qPatrolMat = new THREE.LineBasicMaterial({ color: 0x57d7e8, transparent: true, opacity: 0.7 });
+      this._qTick = 0;
+    }
+    if (++this._qTick % 10 !== 0) return;
+    const g = this.qGroup;
+    for (let i = g.children.length - 1; i >= 0; i--) {
+      const c = g.children[i];
+      g.remove(c);
+      if (c.geometry && c.geometry !== this._qWpGeo) c.geometry.dispose();
+      if (c.material && c.material !== this._qWpMat && c.material !== this._qLineMat && c.material !== this._qPatrolMat) c.material.dispose();
+    }
+    const orderPt = (o) => {
+      if (!o) return null;
+      if (o.type === 'move' || o.type === 'attackmove') return { x: o.x, y: o.y };
+      if (o.type === 'patrol') return { x: o.leg ? o.x2 : o.x1, y: o.leg ? o.y2 : o.y1 };
+      if (o.type === 'attack' || o.type === 'capture') {
+        const t = o.targetId != null ? w.entities.get(o.targetId) : null;
+        return t && !t.dead ? { x: t.x, y: t.y } : null;
+      }
+      return null;
+    };
+    for (const id of game.selection) {
+      const e = w.entities.get(id);
+      if (!e || e.kind !== 'unit' || e.side !== 'player' || e.dead) continue;
+      const pts = [];
+      const cur = orderPt(e.order);
+      if (cur) pts.push(cur);
+      for (const q of (e.oq || [])) {
+        const p = orderPt(q);
+        if (p) pts.push(p);
+      }
+      // 巡逻画双端点连线（青色）
+      if (e.order?.type === 'patrol') {
+        const geo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(e.order.x1, 0.1, e.order.y1),
+          new THREE.Vector3(e.order.x2, 0.1, e.order.y2),
+        ]);
+        const line = new THREE.Line(geo, this._qPatrolMat);
+        line.renderOrder = 6;
+        g.add(line);
+      }
+      // 固守/警戒画锚点圈（蓝=固守 / 琥珀=警戒）
+      if (e.order?.type === 'hold' || e.order?.type === 'guard') {
+        const ring = new THREE.Mesh(
+          this._qWpGeo,
+          new THREE.MeshBasicMaterial({
+            color: e.order.type === 'hold' ? 0x4da3ff : 0xffc94d,
+            side: THREE.DoubleSide, transparent: true, opacity: 0.9, depthWrite: false,
+          }),
+        );
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.set(e.order.x, 0.08, e.order.y);
+        ring.scale.setScalar(3);
+        ring.renderOrder = 6;
+        g.add(ring);
+        continue;
+      }
+      const v3 = [new THREE.Vector3(e.x, 0.1, e.y), ...pts.map(p => new THREE.Vector3(p.x, 0.1, p.y))];
+      if (v3.length < 2) continue; // 无目标无队列：不画
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(v3), this._qLineMat);
+      line.renderOrder = 6;
+      g.add(line);
+      for (const p of pts) {
+        const m = new THREE.Mesh(this._qWpGeo, this._qWpMat);
+        m.rotation.x = -Math.PI / 2;
+        m.position.set(p.x, 0.08, p.y);
+        m.renderOrder = 6;
+        g.add(m);
+      }
     }
   }
 

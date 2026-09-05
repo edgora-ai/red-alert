@@ -16,18 +16,18 @@ export class Commander {
     this.bi = 0;          // 建造序列进度
     this.armyCounter = 0; // 兵种轮换计数
     this.waveNo = 0;
-    this.waveCd = 500; // 开局 17s 缓冲
+    this.waveCd = this.diff.waveCd0 ?? 500; // 首波缓冲（world tick，见 DIFFS 节奏曲线）
     this.trickle = 0;
     this.defendCd = 0;
   }
 
   tick() {
-    if (++this.timer < 15) return; // 每 0.5s 决策一次
+    if (++this.timer < 15) return; // 每 0.5s 决策一次（15 world tick）
     this.timer = 0;
     const w = this.world;
     if (w.winner) return;
-    // 难度运营补贴：高难度 AI 经济更顺（每 2s 结算一次）
-    if (++this.trickle >= 60) {
+    // 难度运营补贴：每 2s 结算一次（= 每 4 次决策）
+    if (++this.trickle >= 4) {
       this.trickle = 0;
       w.credits[this.side] += Math.round(this.diff.trickle * this.diff.incomeMul);
     }
@@ -178,9 +178,10 @@ export class Commander {
   }
 
   // 进攻波次：攒够一拨、间隔冷却过后就 A 过去（规模随难度与波次增长）
+  // 注意：tick() 每 15 world tick 才调一次 launchWaves，waveCd/waveGap 按决策次数口径
   launchWaves() {
     const w = this.world, s = this.side;
-    if (this.waveCd > 0) { this.waveCd--; return; }
+    if (this.waveCd > 0) { this.waveCd -= 15; return; }
     const army = w.unitsOf(s).filter(u => u.weapon && !u.path && u.order?.type !== 'attackmove' && u.order?.type !== 'attack');
     const need = Math.min(this.diff.waveBase + this.waveNo * this.diff.waveStep, this.diff.maxWave);
     if (army.length < need) return;
@@ -196,7 +197,7 @@ export class Commander {
 
   // 基地防守：警报点在自家附近时，空闲部队回防（限频，防抽风）
   defendBase() {
-    if (this.defendCd > 0) { this.defendCd--; return; }
+    if (this.defendCd > 0) { this.defendCd -= 15; return; }
     const w = this.world, s = this.side;
     const threat = w.alerts.find(a => a.side === s && a.ttl > 30);
     if (!threat) return;
@@ -207,6 +208,6 @@ export class Commander {
       u.weapon && !u.path && u.order?.type !== 'attackmove' && u.order?.type !== 'attack').slice(0, 8);
     if (!defenders.length) return;
     w.issueCommand(s, { type: 'attackmove', ids: defenders.map(u => u.id), x: threat.x, y: threat.y });
-    this.defendCd = 90; // 3 秒内不再重复调动
+    this.defendCd = 90; // 90 world tick = 3 秒内不再重复调动
   }
 }

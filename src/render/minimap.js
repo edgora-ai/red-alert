@@ -18,16 +18,34 @@ export class Minimap {
     this.scale = canvas.width / world.w; // 像素/瓦片
     this.frame = 0;
     this.prerender();
-    const jump = (e) => {
+    const toWorld = (e) => {
       const r = canvas.getBoundingClientRect();
-      this.cam.x = (e.clientX - r.left) / this.scale;
-      this.cam.y = (e.clientY - r.top) / this.scale;
+      return { x: (e.clientX - r.left) / r.width * world.w, y: (e.clientY - r.top) / r.height * world.h };
+    };
+    const jump = (e) => {
+      const p = toWorld(e);
+      this.cam.x = p.x;
+      this.cam.y = p.y;
       if (this.game) this.game.userCam = true; // 小地图跳转 = 用户接管相机
     };
-    canvas.addEventListener('mousedown', e => { jump(e); this.dragging = true; });
+    canvas.addEventListener('contextmenu', e => e.preventDefault());
+    canvas.addEventListener('mousedown', e => {
+      if (e.button === 2) {
+        // 右键小地图 = 直接下命令（移动/攻击），Shift=排队
+        const p = toWorld(e);
+        if (this.cmdCb) this.cmdCb(p.x, p.y, e.shiftKey);
+        else jump(e);
+        return;
+      }
+      if (e.button !== 0) return;
+      jump(e); this.dragging = true;
+    });
     canvas.addEventListener('mousemove', e => { if (this.dragging) jump(e); });
     window.addEventListener('mouseup', () => { this.dragging = false; });
   }
+
+  // main 注入：右键小地图命令回调 (x, y, queued)
+  bindCmd(cb) { this.cmdCb = cb; }
 
   prerender() {
     const t = document.createElement('canvas');

@@ -26,26 +26,44 @@ export function updateCombat(world, e) {
     return;
   }
 
-  // 校验当前目标
+  // 校验当前目标；目标死亡/脱离后若有排队指令则推进（attack 队列逐个点名）
   let target = e.targetId != null ? world.entities.get(e.targetId) : null;
   if (target && (target.dead || !canEngage(world, e, w, target, 1.4))) {
     target = null; e.targetId = null;
+    if (e.order?.type === 'attack' && e.kind === 'unit') {
+      if (!world.popQueued(e)) { e.order = { type: 'idle' }; }
+      else if (e.order?.type === 'move' || e.order?.type === 'attackmove') return; // 切到移动指令：本帧先走路
+    }
+    // 巡逻/警戒被打断后恢复走路（由 updatePatrol/updateStance 接管）
+    if ((e.order?.type === 'patrol' || e.order?.type === 'guard' || e.order?.type === 'attackmove') && !e.path) {
+      target = null;
+    }
   }
 
-  // 索敌：防御塔扫武器射程，单位扫射程（攻击移动时扫视野）
+  // 索敌：防御塔扫武器射程；单位按姿态扫（攻击移动/巡逻用视野，固守只看射程，警戒看锚点 8 格）
   if (!target && --e.scanCd <= 0) {
     e.scanCd = 10;
-    const r = (e.order?.type === 'attackmove' && e.sight) ? Math.max(e.sight, w.range) : w.range;
-    target = acquireTarget(world, e, w, r);
+    const o = e.order?.type;
+    if (e.kind === 'unit' && (o === 'guard' || o === 'hold')) {
+      target = acquireLeashed(world, e, w, o === 'hold' ? w.range : 8);
+    } else {
+      const r = ((o === 'attackmove' || o === 'patrol') && e.sight) ? Math.max(e.sight, w.range) : w.range;
+      target = acquireTarget(world, e, w, r);
+    }
     if (target) e.targetId = target.id;
   }
 
   if (!target) return;
 
+  // 巡逻/攻击移动/警戒：停下来开火（经典 RTS 行为），打完继续走
+  const o = e.order?.type;
+  if ((o === 'patrol' || o === 'attackmove' || o === 'guard') && e.path) e.path = null;
+
   const d = dist(e.x, e.y, target.x, target.y);
   if (d > w.range) {
-    // 单位主动追击（防御塔不动）；idle 单位不追击，只打进入射程的敌人
-    if (e.kind === 'unit' && (e.order?.type === 'attack' || e.order?.type === 'attackmove')) {
+    // 固守(hold)/idle 绝不追击；只有 attack/attackmove/guard（拴绳内）追击
+    const chase = o === 'attack' || o === 'attackmove' || o === 'guard';
+    if (e.kind === 'unit' && chase) {
       if ((e.repathCd = (e.repathCd || 0) - 1) <= 0) {
         e.repathCd = 15;
         world.setPath(e, target.x, target.y);
@@ -53,7 +71,17 @@ export function updateCombat(world, e) {
     }
     return;
   }
-  if (w.minRange && d < w.minRange) return; // 巡航导弹最小射程，贴脸打不了
+  // 长手风筝：有最小射程的火炮（巡航导弹/火箭炮）被贴脸时主动后撤拉开
+  if (w.minRange && d < w.minRange && e.kind === 'unit' && (e.order?.type === 'attack' || e.order?.type === 'attackmove' || e.order?.type === 'guard')) {
+    if ((e.repathCd = (e.repathCd || 0) - 1) <= 0) {
+      e.repathCd = 20;
+      const dx = e.x - target.x, dy = e.y - target.y;
+      const len = Math.hypot(dx, dy) || 1;
+      world.setPath(e, e.x + (dx / len) * (w.minRange + 1.5), e.y + (dy / len) * (w.minRange + 1.5));
+    }
+    return;
+  }
+  if (w.minRange && d < w.minRange) return; // 贴脸盲区内打不了
 
   e.dir = Math.atan2(target.y - e.y, target.x - e.x);
   if (e.cooldown > 0) return;
@@ -69,8 +97,28 @@ function canEngage(world, e, w, target, slack = 1) {
   return dist(e.x, e.y, target.x, target.y) <= w.range * slack;
 }
 
+// 警戒索敌：以锚点为圆心 leash 格内找敌（hold 传射程=原地，guard 传 8=小范围）
+function acquireLeashed(world, e, w, leash) {
+  const ax = e.order?.x ?? e.x, ay = e.order?.y ?? e.y;
+  let best = null, bestD = Infinity;
+  for (const t of world.entities.values()) {
+    if (t.dead || t.side === e.side) continue;
+    const def = world.unitDef(t);
+    const isAir = !!def?.fly;
+    if (isAir && !w.canAir) continue;
+    if (!isAir && w.airOnly) continue;
+    if (def?.stealth && !(t.cloak > 0) && dist(e.x, e.y, t.x, t.y) > ECON.cloak.near) continue;
+    if (dist(ax, ay, t.x, t.y) > leash) continue;
+    const d = dist(e.x, e.y, t.x, t.y);
+    if (d <= w.range && d < bestD) { bestD = d; best = t; }
+  }
+  return best;
+}
+
 function acquireTarget(world, e, w, range) {
   let best = null, bestD = Infinity;
+  // 防空单位优先打空（距离打 5 折参与最近比较），避免被地面肉盾吸火力
+  const aaBias = w.canAir && (e.type === 'hunter' || e.kind === 'building') ? 0.5 : 1;
   for (const t of world.entities.values()) {
     if (t.dead || t.side === e.side) continue;
     const def = world.unitDef(t);
@@ -80,7 +128,8 @@ function acquireTarget(world, e, w, range) {
     // 光学迷彩：隐形单位只有近身（或现形倒计时中）才能被索敌
     if (def?.stealth && !(t.cloak > 0) && dist(e.x, e.y, t.x, t.y) > ECON.cloak.near) continue;
     const d = dist(e.x, e.y, t.x, t.y);
-    if (d <= range && d < bestD) { bestD = d; best = t; }
+    const score = isAir ? d * aaBias : d;
+    if (d <= range && score < bestD) { bestD = score; best = t; }
   }
   return best;
 }

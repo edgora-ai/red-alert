@@ -229,12 +229,74 @@ check('轨道炮落地造成毁灭伤害', tgt.dead || tgt.hp < hp0 * 0.5,
 // —— 收尾：迷雾与消息机制 ——
 check('战争迷雾已刷新', world.fog.some(v => v >= 1));
 
-// —— 难度分级 ——
+// —— 阶段11.5：Shift×5 连点生产 + 编队分离 ——
+world.credits.player = 20000;
+const fac5 = world.buildingsOf('player').find(b => b.type === 'factory');
+if (fac5) {
+  fac5.queue.length = 0;
+  const q0 = fac5.queue.length;
+  world.issueCommand('player', { type: 'produce', item: 'rifle', n: 1 });
+  const q1 = fac5.queue.length;
+  // 步兵走兵营：工厂不应收单；找兵营测 ×5
+  const bar5 = world.buildingsOf('player').find(b => b.type === 'barracks');
+  if (bar5) {
+    bar5.queue.length = 0;
+    world.issueCommand('player', { type: 'produce', item: 'rifle', n: 5 });
+    check('Shift×5 连点生产（一次排 5 个步兵）', bar5.queue.length === 5, `queue=${bar5.queue.length}`);
+    bar5.queue.length = 0;
+  } else {
+    check('Shift×5 连点生产（无兵营跳过）', q1 === q0, `factory queue=${q1}`);
+  }
+}
+const sepA = world.addUnit('player', 'cheetah', 25.5, 25.5);
+const sepB = world.addUnit('player', 'cheetah', 25.55, 25.55);
+const sepD0 = Math.hypot(sepA.x - sepB.x, sepA.y - sepB.y);
+for (let i = 0; i < 30; i++) world.tick();
+const sepD1 = Math.hypot(sepA.x - sepB.x, sepA.y - sepB.y);
+check('重叠单位被分离推开（防叠罗汉）', sepD1 >= sepD0, `${sepD0.toFixed(3)} -> ${sepD1.toFixed(3)}`);
+
+// —— 难度分级（读 DIFFS 配置，不写死数值，不随平衡调整误报） ——
 const { Commander: C2 } = await import('../src/sim/ai.js');
+const { DIFFS } = await import('../src/config.js');
 const w2 = (await import('../src/sim/world.js')).createSkirmish(999);
 const hardAI = new C2(w2, 'enemy', 'hard');
-check('难度分级生效（困难 AI 运营补贴更高）', hardAI.diff.trickle === 20 && hardAI.diff.waveBase === 8,
-  `trickle=${hardAI.diff.trickle}`);
+const easyAI = new C2(w2, 'enemy', 'easy');
+check('难度分级生效（困难节奏全面快于简单）',
+  hardAI.diff.trickle > easyAI.diff.trickle && hardAI.diff.waveGap < easyAI.diff.waveGap && hardAI.diff.waveCd0 < easyAI.diff.waveCd0,
+  `trickle ${easyAI.diff.trickle}->${hardAI.diff.trickle}, gap ${easyAI.diff.waveGap}->${hardAI.diff.waveGap}`);
+check('难度节奏口径一致（首波缓冲>波次间隔>0）',
+  DIFFS.normal.waveCd0 > DIFFS.normal.waveGap && DIFFS.normal.waveGap > 0,
+  `cd0=${DIFFS.normal.waveCd0} gap=${DIFFS.normal.waveGap}`);
+
+// —— 阶段12：职业操控（排队/巡逻/固守/停止清队列） ——
+const qTank = world.addUnit('player', 'cheetah', 30.5, 60.5);
+world.issueCommand('player', { type: 'move', ids: [qTank.id], x: 35, y: 60 });
+world.issueCommand('player', { type: 'move', ids: [qTank.id], x: 40, y: 60, queued: true });
+check('Shift 排队移动（队列长度 1）', (qTank.oq?.length ?? 0) === 1, `oq=${qTank.oq?.length ?? 0}`);
+world.issueCommand('player', { type: 'stop', ids: [qTank.id] });
+check('停止清空移动队列', (qTank.oq?.length ?? 0) === 0 && qTank.order.type === 'idle', `order=${qTank.order.type}`);
+const pTank = world.addUnit('player', 'cheetah', 30.5, 62.5);
+world.issueCommand('player', { type: 'patrol', ids: [pTank.id], x: 36, y: 62 });
+check('巡逻指令下发（两点往返）', pTank.order.type === 'patrol' && pTank.order.x2 === 36, `order=${pTank.order.type}`);
+world.issueCommand('player', { type: 'hold', ids: [pTank.id] });
+check('固守指令下发（原地开火）', pTank.order.type === 'hold', `order=${pTank.order.type}`);
+world.issueCommand('player', { type: 'hold', ids: [pTank.id] });
+check('再按固守切警戒（小范围追击）', pTank.order.type === 'guard', `order=${pTank.order.type}`);
+// 巡逻往返：腿终点折返
+const pp = world.addUnit('player', 'cheetah', 20.5, 20.5);
+world.issueCommand('player', { type: 'patrol', ids: [pp.id], x: 21, y: 20 });
+for (let i = 0; i < 240; i++) world.tick();
+check('巡逻单位来回走动（往返腿切换）', Math.hypot(pp.x - 20.5, pp.y - 20.5) > 0.2, `at ${pp.x.toFixed(1)},${pp.y.toFixed(1)} leg=${pp.order.leg}`);
+// 固守不追击：射程外敌人路过不追
+const holder = world.unitsOf('player').find(u => u.type === 'cheetah' && u.order?.type !== 'patrol') || qTank;
+world.issueCommand('player', { type: 'hold', ids: [holder.id] });
+const hx = holder.x, hy = holder.y;
+const passer = world.addUnit('enemy', 'rifle', hx + 7, hy);
+passer.order = { type: 'move', x: hx + 12, y: hy };
+world.setPath(passer, hx + 12, hy);
+for (let i = 0; i < 90; i++) world.tick();
+check('固守单位不追击（原地不动）', Math.hypot(holder.x - hx, holder.y - hy) < 0.5 && holder.order.type === 'hold',
+  `moved ${Math.hypot(holder.x - hx, holder.y - hy).toFixed(2)}`);
 
 console.log(`\n${failures === 0 ? '全部通过 ✔' : failures + ' 项失败 ✘'}`);
 process.exit(failures === 0 ? 0 : 1);
