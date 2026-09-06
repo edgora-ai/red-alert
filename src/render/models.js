@@ -223,8 +223,7 @@ function mlrs(side) {
   tur.add(face);
   for (let i = 0; i < 6; i++) {                                  // 3x2 定向管口
     const tx = 0.245, ty = 0.19 + (i % 3) * 0.07, tz = (Math.floor(i / 3) - 0.5) * 0.1;
-    const tube = cyl(0.026, 0.026, 0.04, 0x0d1015, tx, ty, tz, { rz: -Math.PI / 2 });
-    tube.rotation.y = Math.PI / 2 - 0.42 * 0; // 管口朝前上
+    const tube = cyl(0.026, 0.026, 0.04, 0x0d1015, tx, ty, tz, { rz: -Math.PI / 2 + 0.42 });
     tur.add(tube);
   }
   tur.add(box(0.1, 0.03, 0.1, a, -0.14, 0.12, 0, { em: a, emi: 0.3 })); // 阵营灯

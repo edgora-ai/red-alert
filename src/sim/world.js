@@ -424,6 +424,8 @@ export class World {
       u.oq = [];
       u.order = { type: 'attack' };
       u.targetId = targetId;
+      // 立刻向目标寻路：远距离点名也要马上动身（ combat 层 chase 分支负责后续重寻路）
+      this.setPath(u, t.x, t.y);
     }
     this.events.push({ type: 'move' });
   }
@@ -492,6 +494,10 @@ export class World {
     const b = this.entities.get(id);
     if (!b || b.kind !== 'building' || b.side !== side) return false;
     this.credits[side] += Math.floor(BUILDINGS[b.type].cost / 2);
+    if (side === 'player') {
+      this.fx.push({ type: 'text', text: `+$${Math.floor(BUILDINGS[b.type].cost / 2)}`, color: '#ffd866', x: b.x, y: b.y - 0.9, ttl: 80, max: 80 });
+      this.events.push({ type: 'deposit', x: b.x, y: b.y }); // 变卖回款金币音
+    }
     this.killEntity(b);
     return true;
   }
@@ -561,6 +567,7 @@ export class World {
   }
 
   // 编队分离：同高度层单位半径互斥，避免大兵团叠罗汉（空间哈希 O(n)）
+  // 检查 3×3 邻域格：只查本格会漏掉骑在格线两侧的重叠对（格宽 0.5 < 分离直径 0.84）
   separateUnits() {
     const grid = new Map();
     for (const u of this.entities.values()) {
@@ -571,20 +578,30 @@ export class World {
       cell.push(u);
     }
     const R = 0.42, R2 = R * R;
-    for (const cell of grid.values()) {
+    for (const [k, cell] of grid) {
+      const cx = Math.floor(k / 1000), cy = k % 1000;
       for (let i = 0; i < cell.length; i++) {
         const a = cell[i];
         const aFly = !!UNITS[a.type]?.fly;
-        for (let j = i + 1; j < cell.length; j++) {
-          const b = cell[j];
-          if (!!UNITS[b.type]?.fly !== aFly) continue; // 空地分层
-          const dx = b.x - a.x, dy = b.y - a.y;
-          const d2 = dx * dx + dy * dy;
-          if (d2 >= R2 || d2 < 1e-8) continue;
-          const d = Math.sqrt(d2);
-          const push = ((R - d) / d) * 0.06;
-          const px = dx * push, py = dy * push;
-          a.x -= px; a.y -= py; b.x += px; b.y += py;
+        // 本格 + 右/下方向邻格（方向去重保证每对只算一次，避免双向重复推挤加倍）
+        for (let gy = 0; gy <= 1; gy++) {
+          for (let gx = -1; gx <= 1; gx++) {
+            if (gy === 0 && gx < 0) continue; // 左/上邻格由对方格子处理
+            const nk = (cx + gx) * 1000 + (cy + gy);
+            const other = nk === k ? cell : grid.get(nk);
+            if (!other) continue;
+            for (let j = nk === k ? i + 1 : 0; j < other.length; j++) {
+              const b = other[j];
+              if (b.id === a.id || !!UNITS[b.type]?.fly !== aFly) continue; // 空地分层
+              const dx = b.x - a.x, dy = b.y - a.y;
+              const d2 = dx * dx + dy * dy;
+              if (d2 >= R2 || d2 < 1e-8) continue;
+              const d = Math.sqrt(d2);
+              const push = ((R - d) / d) * 0.06;
+              const px = dx * push, py = dy * push;
+              a.x -= px; a.y -= py; b.x += px; b.y += py;
+            }
+          }
         }
       }
     }
@@ -828,7 +845,9 @@ export class World {
           this.setPath(e, e.order.x, e.order.y);
         }
         else if (e.order?.type === 'patrol') this.updatePatrol(e);
-        else if ((e.order?.type === 'hold' || e.order?.type === 'guard') && e.weapon && !e.path) this.updateStance(e);
+        // hold/guard 每 tick 都要跑姿态判定：guard 的 8 格拴绳必须在追击路径存在时也生效，
+        // 否则目标跑远后 path 挂着，警戒变成无限追击
+        else if ((e.order?.type === 'hold' || e.order?.type === 'guard') && e.weapon) this.updateStance(e);
         if (e.weapon) updateCombat(this, e);
         else if (!e.path && (e.order?.type === 'move' || e.order?.type === 'attackmove')) this.arriveAdvance(e);
       } else {

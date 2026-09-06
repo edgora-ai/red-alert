@@ -80,6 +80,8 @@ export class Sound {
     this.master.gain.value = this.settings.muted ? 0 : 1;
     this.sfxBus.gain.value = this.settings.sfx * this.settings.sfx;
     this.musicBase = this.settings.music * this.settings.music * 0.9;
+    // 爆炸闪避会调度 musicBus 的自动化曲线：直接赋值会被旧曲线覆盖导致调音量无效，先清掉
+    this.musicBus.gain.cancelScheduledValues(this.ctx.currentTime);
     this.musicBus.gain.value = this.musicBase;
     try { localStorage.setItem(LS_KEY, JSON.stringify(this.settings)); } catch { /* 隐私模式 */ }
   }
@@ -143,8 +145,8 @@ export class Sound {
     this.eventHeat = Math.max(0, this.eventHeat - dt * 0.28);
     this.heat += (Math.min(1, this.eventHeat) - this.heat) * Math.min(1, dt * 2.2);
     this.scheduleMusic();
-    // 远处战场闷雷：战斗热度中上时随机低频滚雷，增强空间纵深
-    if (this.heat > 0.3 && Math.random() < dt * 0.14) {
+    // 远处战场闷雷：战斗热度中上时随机低频滚雷，增强空间纵深（静音/零音量时不白建节点）
+    if (!this.settings.muted && this.settings.music > 0 && this.heat > 0.3 && Math.random() < dt * 0.14) {
       this.noise({ dur: 1.2 + Math.random(), type: 'lowpass', freq: 120, gain: 0.05 + this.heat * 0.06, delay: 0.1, out: this.musicBus });
     }
   }
@@ -169,7 +171,6 @@ export class Sound {
       case 'killConfirm': this.killConfirm(); break;      // 击杀确认
       case 'lowPower': this.lowPowerAlarm(); break;       // 低电力闷警报
       case 'techDone': this.techDone(); break;
-      case 'lowPower': this.tone({ freq: 520, dur: 0.5, type: 'square', gain: 0.08, slideTo: 300 }); break;
       case 'win': this.jingle(true); break;
       case 'lose': this.jingle(false); break;
     }

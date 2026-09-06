@@ -211,7 +211,8 @@ export class Input {
     if ((this.hoverCd = (this.hoverCd || 0) - 1) <= 0) {
       this.hoverCd = 6;
       const armed = this.selectedUnits().some(u => u.weapon);
-      this.hoverEnemy = !!(armed && inside && this.pickAt(t.x, t.y)?.side && this.pickAt(t.x, t.y).side !== 'player');
+      const picked = inside ? this.pickAt(t.x, t.y) : null;
+      this.hoverEnemy = !!(armed && picked?.side && picked.side !== 'player');
       this.updateCursorState();
     }
 

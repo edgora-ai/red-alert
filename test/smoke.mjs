@@ -406,5 +406,50 @@ drone.order = { type: 'idle' }; drone.path = null;
 for (let i = 0; i < 180; i++) world.tick();
 check('天启坦克双联导弹可对空', drone.hp < drone.maxHp, `ghost hp ${Math.round(drone.hp)}/${drone.maxHp}`);
 
+// —— 阶段14：v8 审查修复回归（远距离攻击追击 / 跨格编队分离） ——
+// 14.1 右键点名远处敌人：attack 指令必须保持并立即追击（修复前 1.4 倍射程校验会吞掉指令）
+{
+  const spot = freeSpotN(30, 40, 2);
+  const chaser = world.addUnit('player', 'cheetah', spot.tx + 0.5, spot.ty + 0.5);
+  const prey = world.addUnit('enemy', 'tyrant', spot.tx + 14.5, spot.ty + 0.5);
+  prey.order = { type: 'idle' }; prey.path = null; prey.stun = 0;
+  world.issueCommand('player', { type: 'attack', ids: [chaser.id], targetId: prey.id });
+  const sx = chaser.x;
+  for (let i = 0; i < 5; i++) world.tick();
+  const keepsTarget = chaser.order?.type === 'attack' && chaser.targetId === prey.id;
+  for (let i = 0; i < 120 && chaser.targetId === prey.id; i++) world.tick();
+  const closedIn = Math.abs(chaser.x - prey.x) < 6.5; // 射程 5.5 + 缓冲：追到位才会开火
+  check('远距离 attack 点名保持目标不丢失', keepsTarget, `order=${chaser.order?.type} target=${chaser.targetId}`);
+  check('远距离 attack 点名立即追击到位', closedIn && Math.abs(chaser.x - sx) > 4,
+    `moved ${Math.abs(chaser.x - sx).toFixed(1)} → dist ${Math.abs(chaser.x - prey.x).toFixed(1)}`);
+  chaser.hp = 0; world.killEntity(chaser);
+  prey.hp = 0; world.killEntity(prey);
+}
+// 14.2 跨格线重叠单位也要被分离（修复前空间哈希只查同格，格线两侧永远不推开）
+{
+  const spot = freeSpotN(20, 40, 2);
+  const a = world.addUnit('player', 'cheetah', spot.tx + 0.49, spot.ty + 0.5);
+  const b = world.addUnit('player', 'cheetah', spot.tx + 0.51, spot.ty + 0.5);
+  a.order = { type: 'idle' }; a.path = null;
+  b.order = { type: 'idle' }; b.path = null;
+  const d0 = Math.hypot(a.x - b.x, a.y - b.y);
+  for (let i = 0; i < 40; i++) world.tick();
+  const d1 = Math.hypot(a.x - b.x, a.y - b.y);
+  check('跨格线重叠单位被分离推开', d1 > d0 + 0.04, `${d0.toFixed(3)} -> ${d1.toFixed(3)}`);
+  world.killEntity(a); world.killEntity(b);
+}
+// 14.3 卖建筑回款并产生入账事件（X 键反馈闭环）
+{
+  world.credits.player = 5000;
+  const spot = freeSpotN(24, 44, 2);
+  const pw = world.addBuilding('player', 'power', spot.tx, spot.ty);
+  const before = world.credits.player;
+  const evBefore = world.events.length;
+  check('变卖建筑回款一半造价', world.issueCommand('player', { type: 'sell', id: pw.id }) === true
+    && world.credits.player === before + 300 && !world.entities.has(pw.id),
+    `$${before} -> $${world.credits.player}`);
+  check('变卖建筑产生入账事件（金币音/飘字）', world.events.some(e => e.type === 'deposit') || world.events.length > evBefore);
+}
+
 console.log(`\n${failures === 0 ? '全部通过 ✔' : failures + ' 项失败 ✘'}`);
 process.exit(failures === 0 ? 0 : 1);

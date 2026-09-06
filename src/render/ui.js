@@ -3,6 +3,9 @@
 import { UNITS, BUILDINGS, UPGRADES, WEAPONS, buildTicks, DIFFS } from '../config.js';
 import { SIDE_COLORS } from './renderer.js';
 
+// 队列项/实体查定义：科技研发项不在 UNITS/BUILDINGS 里，必须兜底 UPGRADES（否则选中信息崩）
+function defOfItem(item) { return UNITS[item] || BUILDINGS[item] || UPGRADES[item]; }
+
 const TABS = {
   buildings: () => BUILDINGS.yard.produces.filter(t => !BUILDINGS[t].side || BUILDINGS[t].side === 'player'),
   infantry: () => BUILDINGS.barracks.produces,
@@ -272,7 +275,7 @@ export class UI {
       if ((e.level || 0) > 0) html += `　<span class="vet">★ 老兵 Lv${e.level + 1}</span>`;
       if (e.kind === 'unit' && e.order?.type && e.order.type !== 'idle') html += `　${STANCE[e.order.type] || e.order.type}`;
       if (e.kind === 'unit' && e.oq?.length) html += `　队列×${e.oq.length}（Shift 追加）`;
-      if (e.kind === 'building' && e.queue?.length) html += `<br>生产中：${(UNITS[e.queue[0]] || BUILDINGS[e.queue[0]]).name} ×${e.queue.length}`;
+      if (e.kind === 'building' && e.queue?.length) html += `<br>${UPGRADES[e.queue[0]] ? '研发中' : '生产中'}：${defOfItem(e.queue[0]).name} ×${e.queue.length}`;
       if (e.type === 'harvester') html += `<br>载矿：${Math.round(e.load || 0)}`;
       if (e.type === 'mcv') html += '<br>按 D 展开为建造厂';
       if (e.kind === 'building' && BUILDINGS[e.type].produces) html += '<br>右键地图设集结点';

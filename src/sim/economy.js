@@ -8,8 +8,10 @@ export function updateHarvester(world, u) {
 
   switch (h.state) {
     case 'idle': {
+      // 全图无矿待命时限频重扫（96×96 全图扫描不是每 tick 都该做的）
+      if ((h.scanCd ?? 0) > 0) { h.scanCd--; return; }
       const ore = findNearestOre(world, u.x, u.y);
-      if (!ore) return; // 全图无矿，原地待命
+      if (!ore) { h.scanCd = 15; return; } // 半秒后再找
       h.oreTx = ore.x; h.oreTy = ore.y;
       world.setPath(u, ore.x + 0.5, ore.y + 0.5);
       h.state = 'toOre';
@@ -61,7 +63,7 @@ export function updateHarvester(world, u) {
         u.load = 0;
         u.path = null;
         h.state = 'idle';
-        world.events.push({ type: 'deposit', side: u.side });
+        world.events.push({ type: 'deposit', side: u.side, x: ref.x, y: ref.y }); // 带坐标：金币音按精炼厂位置空间化
       } else if (!u.path) {
         world.setPath(u, ref.x, ref.y); // 被挡停，重新寻路
       }

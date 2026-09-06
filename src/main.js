@@ -133,7 +133,7 @@ function boot() {
       }
 
       renderer?.render();
-      minimap?.update(renderer);
+      if (renderer) minimap?.update(renderer); // 渲染器初始化失败时小地图视口框无依赖可算，跳过
       ui?.update();
 
       // 音频：消费事件（空间化）+ 每帧烈度/配乐驱动

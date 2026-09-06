@@ -82,14 +82,19 @@ export class PostFX {
     this.quadScene.add(this.quad);
     this.quad.frustumCulled = false;
 
-    const mk = (frag) => new THREE.ShaderMaterial({
-      vertexShader: VERT, fragmentShader: frag, depthTest: false, depthWrite: false,
+    const mk = (frag, uniforms = {}) => new THREE.ShaderMaterial({
+      vertexShader: VERT, fragmentShader: frag, depthTest: false, depthWrite: false, uniforms,
     });
-    this.brightMat = mk(BRIGHT_FRAG);
-    this.blurMat = mk(BLUR_FRAG);
-    this.compMat = mk(COMPOSITE_FRAG);
+    this.brightMat = mk(BRIGHT_FRAG, { tex: { value: null }, threshold: { value: 0.82 } });
+    this.blurMat = mk(BLUR_FRAG, { tex: { value: null }, dir: { value: new THREE.Vector2() } });
+    this.compMat = mk(COMPOSITE_FRAG, {
+      scene: { value: null }, bloom: { value: null }, bloomStrength: { value: 0.85 },
+      time: { value: 0 }, resolution: { value: new THREE.Vector2(1, 1) },
+    });
 
     this.halfFloat = this.r.capabilities.isWebGL2;
+    this.blurDirH = new THREE.Vector2();
+    this.blurDirV = new THREE.Vector2();
     this.createTargets(1, 1);
   }
 
@@ -103,7 +108,7 @@ export class PostFX {
     const bopts = { ...opts, depthBuffer: false };
     this.rtA = new THREE.WebGLRenderTarget(this.bw, this.bh, bopts);
     this.rtB = new THREE.WebGLRenderTarget(this.bw, this.bh, bopts);
-    this.compMat.uniforms.resolution = { value: new THREE.Vector2(w, h) };
+    this.compMat.uniforms.resolution.value.set(w, h);
   }
 
   resize(w, h) {
@@ -125,23 +130,25 @@ export class PostFX {
   end(timeSec) {
     if (!this.enabled) return;
     // 亮度提取
-    this.brightMat.uniforms.tex = { value: this.rtScene.texture };
-    this.brightMat.uniforms.threshold = { value: 0.82 };
+    this.brightMat.uniforms.tex.value = this.rtScene.texture;
+    this.brightMat.uniforms.threshold.value = 0.82;
     this.pass(this.brightMat, this.rtA);
-    // 两次迭代的高斯模糊（横向→纵向），ping-pong
+    // 两次迭代的高斯模糊（横向→纵向），ping-pong（方向向量预分配，避免每帧 GC）
     for (let i = 0; i < 2; i++) {
-      this.blurMat.uniforms.tex = { value: this.rtA.texture };
-      this.blurMat.uniforms.dir = { value: new THREE.Vector2(1 / this.bw, 0) };
+      this.blurMat.uniforms.tex.value = this.rtA.texture;
+      this.blurDirH.set(1 / this.bw, 0);
+      this.blurMat.uniforms.dir.value = this.blurDirH;
       this.pass(this.blurMat, this.rtB);
-      this.blurMat.uniforms.tex = { value: this.rtB.texture };
-      this.blurMat.uniforms.dir = { value: new THREE.Vector2(0, 1 / this.bh) };
+      this.blurMat.uniforms.tex.value = this.rtB.texture;
+      this.blurDirV.set(0, 1 / this.bh);
+      this.blurMat.uniforms.dir.value = this.blurDirV;
       this.pass(this.blurMat, this.rtA);
     }
     // 合成到屏幕
-    this.compMat.uniforms.scene = { value: this.rtScene.texture };
-    this.compMat.uniforms.bloom = { value: this.rtA.texture };
-    this.compMat.uniforms.bloomStrength = { value: 0.85 };
-    this.compMat.uniforms.time = { value: timeSec };
+    this.compMat.uniforms.scene.value = this.rtScene.texture;
+    this.compMat.uniforms.bloom.value = this.rtA.texture;
+    this.compMat.uniforms.bloomStrength.value = 0.85;
+    this.compMat.uniforms.time.value = timeSec;
     this.pass(this.compMat, null);
   }
 }

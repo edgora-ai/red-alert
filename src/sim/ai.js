@@ -66,7 +66,10 @@ export class Commander {
       if (t === 'radar' && owned.includes('radar')) continue;
       return t;
     }
-    // 序列走完后：钱多想花就补防御
+    // 序列走完后：钱多先扩生产线（多兵营/战车工厂并行加速 +35%/座），再补防御
+    if (w.credits[s] > 4500 && owned.filter(x => x === 'factory').length < 2) return 'factory';
+    if (w.credits[s] > 3500 && owned.filter(x => x === 'barracks').length < 2) return 'barracks';
+    if (w.credits[s] > 3000 && owned.filter(x => x === 'refinery').length < 2) return 'refinery';
     if (this.world.credits[s] > 3000) return 'laser';
     return null;
   }

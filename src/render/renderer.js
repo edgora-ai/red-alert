@@ -483,7 +483,7 @@ export class Renderer {
         }
       }
       const ud = rec.group.userData;
-      const dt = this.frameDt;
+      const dt = this.animDt;
 
       // 建筑落成动画（0.5s 从地面立起）
       if (rec.kind === 'building' && rec.group.scale.y < 1) {
@@ -562,6 +562,12 @@ export class Renderer {
       if (ud.spin) ud.spin.obj.rotation.y += dt * ud.spin.speed;
       if (ud.bob) { ud.bob.obj.position.y = ud.bob.y + Math.sin(w.tickCount * 0.08) * 0.04; ud.bob.obj.rotation.y += dt; }
       if (ud.prism) ud.prism.rotation.y += dt * 2;
+      // 武器充能辉光：冷却将尽时棱镜/核心渐亮脉冲（预开火的能量感）
+      if (ud.prism && e.cooldown !== undefined) {
+        const base = (ud.prism.userData.baseI ??= ud.prism.material.emissiveIntensity);
+        const charge = 1 - Math.min(1, e.cooldown / 18); // 最后 0.6s 渐亮
+        ud.prism.material.emissiveIntensity = base * (1.1 + charge * 1.4);
+      }
       if (ud.oreFill) ud.oreFill.visible = (e.load || 0) > 10;
       // 炮管后坐动画
       const barrels = ud.turret?.userData?.barrels;
@@ -697,11 +703,23 @@ export class Renderer {
       } else if (rec.ring) rec.ring.visible = false;
     }
 
-    // 移除死亡实体
+    // 移除死亡实体（连带释放血条纹理/选中环资源，防长局泄漏）
     for (const [id, rec] of this.meshMap) {
       if (seen.has(id)) continue;
       this.scene.remove(rec.group);
-      if (rec.ring) this.scene.remove(rec.ring);
+      if (rec.ring) {
+        this.scene.remove(rec.ring);
+        rec.ring.geometry.dispose();
+        rec.ring.material.dispose();
+      }
+      if (rec.bar) {
+        rec.barTex?.dispose();
+        rec.bar.material.dispose();
+      }
+      if (rec.chev) {
+        rec.chevTex?.dispose();
+        rec.chev.material.dispose();
+      }
       rec.group.traverse(m => { if (m.isMesh) { m.geometry.dispose(); m.material.dispose?.(); } });
       this.meshMap.delete(id);
     }
@@ -732,7 +750,7 @@ export class Renderer {
     if (!this.projPool) {
       this.projPool = [];
       const geo = new THREE.SphereGeometry(0.09, 8, 6);
-      for (let i = 0; i < 80; i++) {
+      for (let i = 0; i < 160; i++) {
         const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xffd8a0 }));
         m.visible = false;
         this.scene.add(m);
@@ -774,6 +792,8 @@ export class Renderer {
     const w = this.world;
     const frozen = this.game.paused; // 暂停 = 冻结帧：特效/粒子计时全部停住
     for (const f of w.fx) {
+      // sim 侧 fx 上限截断会把"已挂 mesh 未到 ttl"的特效挤出列表——注册起来，帧末统一回收防泄漏
+      if (f._mesh) (this.meshedFx ??= new Set()).add(f);
       if (!frozen) f.ttl -= 1;
       const a = Math.max(0, Math.min(1, f.ttl / f.max));
       if (f.type === 'boom') {
@@ -817,7 +837,7 @@ export class Renderer {
           f._mesh.traverse(m => { if (m.isMesh) { m.material.transparent = true; f._mats.push(m.material); } });
           this.scene.add(f._mesh);
         }
-        if ((f.smokeT = (f.smokeT ?? 0) - this.frameDt) <= 0) {
+        if ((f.smokeT = (f.smokeT ?? 0) - this.animDt) <= 0) {
           f.smokeT = 0.16 + Math.random() * 0.15;
           this.particles.spawn({
             layer: 'smoke', x: f.x + (Math.random() - 0.5) * 0.3, y: 0.35, z: f.y + (Math.random() - 0.5) * 0.3,
@@ -909,7 +929,7 @@ export class Renderer {
           f._rise = 0;
           this.scene.add(sp);
         }
-        f._rise += this.frameDt * 0.55;
+        f._rise += this.animDt * 0.55;
         f._mesh.position.set(f.x, 1.0 + f._rise, f.y);
         f._mesh.material.opacity = Math.max(0, Math.min(1, f.ttl / (f.max * 0.45)));
       } else if (f.type === 'muzzle') {
@@ -1024,19 +1044,21 @@ export class Renderer {
       const f = w.fx[i];
       if (f.ttl <= 0) {
         if (f._mesh) {
-          this.scene.remove(f._mesh);
-          if (f._mesh.isSprite) {
-            f._mesh.material.map?.dispose(); // 飘字纹理独享，需释放
-            f._mesh.material.dispose();
-          } else {
-            for (const child of f._mesh.children) {
-              child.material.dispose();
-              if (!child.isSprite) child.geometry.dispose(); // Sprite 共享内置几何体，dispose 会毁掉全局血条
-            }
-          }
+          this.disposeFxMesh(f);
           f._mesh = null;
         }
+        this.meshedFx?.delete(f);
         w.fx.splice(i, 1);
+      }
+    }
+    // 被截断挤出的特效：不再在 fx 列表里但 mesh 还挂在场景上，就地回收
+    if (this.meshedFx) {
+      const alive = new Set(w.fx);
+      for (const f of this.meshedFx) {
+        if (alive.has(f)) continue;
+        this.disposeFxMesh(f);
+        f._mesh = null;
+        this.meshedFx.delete(f);
       }
     }
     // 爆炸灯衰减（秒级；暂停时冻结）
@@ -1049,6 +1071,22 @@ export class Renderer {
     // 瘫痪电弧池衰减（暂停时冻结）
     for (const a of this.stunArcs ?? []) {
       if (a.ttl > 0 && !frozen && (a.ttl -= this.frameDt) <= 0) a.line.visible = false;
+    }
+  }
+
+  // 特效 mesh 统一回收：飘字纹理独享需释放；Sprite 共享内置几何体不能 dispose（会毁掉全局血条）
+  disposeFxMesh(f) {
+    const m = f._mesh;
+    if (!m) return;
+    this.scene.remove(m);
+    if (m.isSprite) {
+      m.material.map?.dispose();
+      m.material.dispose();
+    } else {
+      for (const child of m.children) {
+        child.material.dispose();
+        if (!child.isSprite) child.geometry.dispose();
+      }
     }
   }
 
@@ -1090,10 +1128,11 @@ export class Renderer {
   syncHelpers() {
     const { game, world: w } = this;
 
-    // 点击标记
+    // 点击标记（暂停时冻结倒计时，与整帧冻结一致）
     for (let i = game.markers.length - 1; i >= 0; i--) {
       const m = game.markers[i];
-      if ((m.ttl -= 1) <= 0) {
+      if (!game.paused) m.ttl -= 1;
+      if (m.ttl <= 0) {
         if (m._mesh) { this.scene.remove(m._mesh); m._mesh = null; }
         game.markers.splice(i, 1);
         continue;
@@ -1307,9 +1346,9 @@ export class Renderer {
     this.fill.position.set(px, 20, pz);
     // 天空穹顶跟随相机
     this.sky.position.copy(this.cam3.position);
-    if (this.waterMat) this.waterMat.uniforms.uTime.value += this.frameDt;
-    // 云影缓慢漂移
-    if (this.cloudMat) {
+    if (this.waterMat && !this.game.paused) this.waterMat.uniforms.uTime.value += this.frameDt;
+    // 云影缓慢漂移（暂停时冻结）
+    if (this.cloudMat && !this.game.paused) {
       this.cloudMat.map.offset.x += this.frameDt * 0.0035;
       this.cloudMat.map.offset.y += this.frameDt * 0.0012;
     }
@@ -1364,12 +1403,14 @@ export class Renderer {
     const now = performance.now();
     this.frameDt = Math.min(0.1, (now - this.lastT) / 1000);
     this.lastT = now;
+    // 暂停 = 真冻结帧：粒子/序列帧/冲击波环/焦土/建筑动画/水面云影全部停住（dt=0）
+    this.animDt = this.game.paused ? 0 : this.frameDt;
 
     this.syncEntities();
     this.syncProjectiles();
     this.syncFx();
     this.syncHelpers();
-    this.particles.update(this.frameDt);
+    this.particles.update(this.animDt);
     if (this.world.tickCount !== this.lastFogTick && this.world.tickCount % 6 === 0) {
       this.lastFogTick = this.world.tickCount;
       this.updateFogTexture();
