@@ -46,7 +46,7 @@ try {
 
 // 开局：按所选地图/玩法/难度/初始资源，构建全新世界并换绑全部子系统
 function startGame() {
-  const diffSel = document.querySelector('.diff-btn.active:not(.fund-btn)')?.dataset.diff || 'normal';
+  const diffSel = document.querySelector('.diff-btn[data-diff].active')?.dataset.diff || 'normal';
   const mapKey = document.querySelector('.map-btn.active')?.dataset.map || 'standard';
   const modeKey = document.querySelector('.mode-btn.active')?.dataset.mode || 'classic';
   const mode = GAME_MODES[modeKey] ?? GAME_MODES.classic;
@@ -130,9 +130,11 @@ window.__restartGame = () => {
 // 开始界面：选难度 → 开战（同时解锁 WebAudio）
 const startEl = document.getElementById('start');
 const startBtn = document.getElementById('startBtn');
-document.querySelectorAll('.diff-btn:not(.fund-btn):not(.grace-btn)').forEach(btn => {
+// 轮46：难度按钮用 [data-diff] 精确定位——此前 :not() 选择器会误伤同类的地图/玩法按钮，
+// 点一下难度就把地图+玩法默默重置为默认（选单配置丢失类 bug）
+document.querySelectorAll('.diff-btn[data-diff]').forEach(btn => {
   btn.onclick = () => {
-    document.querySelectorAll('.diff-btn:not(.fund-btn):not(.grace-btn)').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.diff-btn[data-diff]').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
   };
 });

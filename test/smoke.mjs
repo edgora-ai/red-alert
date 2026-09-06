@@ -1149,5 +1149,27 @@ check('阵营门：玩家无法生产空天航母、AI 无法生产浮空炮艇'
   check('轮45简单产能封顶（不扩第二工厂）', nb !== 'factory' && nb !== 'barracks' && nb !== 'refinery', `next=${nb}`);
 }
 
+// —— 阶段34：轮46 接线验证回归（选单互斥/读取隔离/DOM-CSS对齐） ——
+{
+  const { readFileSync } = await import('node:fs');
+  const mainJs46 = readFileSync('src/main.js', 'utf8');
+  const html46 = readFileSync('index.html', 'utf8');
+  const css46 = readFileSync('css/style.css', 'utf8');
+  // 46.1 难度互斥用 [data-diff] 精确定位，不误伤地图/玩法按钮（:not() 连带清除是选单丢失类 bug）
+  check('轮46难度互斥精确定位（不误伤地图/玩法）', mainJs46.includes(".diff-btn[data-diff]")
+    && !mainJs46.includes(".diff-btn:not(.fund-btn):not(.grace-btn)"));
+  // 46.2 开局读取侧隔离：难度读取限定 [data-diff].active，不会读到保护期按钮
+  check('轮46开局读取隔离（难度/保护期互不串扰）', mainJs46.includes(".diff-btn[data-diff].active")
+    && mainJs46.includes(".grace-btn.active"));
+  // 46.3 DOM-CSS 对齐：帮助面板与保护期按钮的 HTML/CSS/JS 三端齐备
+  const ids46 = [...html46.matchAll(/id="([^"]+)"/g)].map(m => m[1]);
+  check('轮46帮助面板三端对齐（HTML/CSS/JS）', ids46.includes('helpPanel')
+    && css46.includes('.help-card') && mainJs46.includes('helpPanel') !== undefined);
+  // Commander 构造函数 (world, side='enemy', diff='normal', opts={})：取第四形参 opts.graceMul
+  const aiSrc46 = readFileSync('src/sim/ai.js', 'utf8');
+  check('轮46保护期选单三端对齐（HTML/JS/Commander）', html46.includes('grace-btn')
+    && mainJs46.includes('graceMul') && aiSrc46.includes('opts.graceMul') && aiSrc46.includes('this.graceMul'));
+}
+
 console.log(`\n${failures === 0 ? '全部通过 ✔' : failures + ' 项失败 ✘'}`);
 process.exit(failures === 0 ? 0 : 1);
