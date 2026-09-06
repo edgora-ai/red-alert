@@ -314,6 +314,7 @@ export class Input {
   onKey(e, down) {
     const k = e.key.toLowerCase();
     if (down) {
+      if (e.repeat) return; // 按住不松的 keydown repeat 一律忽略：否则 G 疯狂切换固守/警戒、P 抖动暂停
       this.sound.unlock();
       if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'q', 'e'].includes(k)) { this.keys.add(k); if (k.startsWith('arrow')) e.preventDefault(); }
       const w = this.world;

@@ -531,5 +531,20 @@ check('天启坦克双联导弹可对空', drone.hp < drone.maxHp, `ghost hp ${M
     `shooterHp ${shooter.hp}/${shooter.maxHp} victimDead=${!!victimE.dead}`);
 }
 
+// —— 阶段17：v8 第四轮审查修复回归（矿车被打先卸货） ——
+{
+  const fw = createSkirmish(999);
+  const harv2 = fw.unitsOf('player').find(u => u.type === 'harvester');
+  harv2.load = 700; // 满载
+  harv2.x = 20; harv2.y = 70;
+  const foe9 = fw.addUnit('enemy', 'rifle', 20.5, 70.5);
+  const { applyDamage: ad9 } = await import('../src/sim/combat.js');
+  ad9(fw, harv2, 5, 'bullet', foe9);
+  check('矿车被打逃向精炼厂卸货（不是带着矿去采矿）', harv2.harvest?.state === 'toRefinery',
+    `state=${harv2.harvest?.state}`);
+  for (let i = 0; i < 1500 && (harv2.load || 0) > 0 && !fw.winner; i++) fw.tick();
+  check('逃亡矿车卸货完成（load 清零，无双倍入账）', (harv2.load || 0) === 0, `load=${harv2.load}`);
+}
+
 console.log(`\n${failures === 0 ? '全部通过 ✔' : failures + ' 项失败 ✘'}`);
 process.exit(failures === 0 ? 0 : 1);

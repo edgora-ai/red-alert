@@ -497,7 +497,7 @@ export class Renderer {
       if (rec.kind === 'building' && rec.group.scale.y < 1) {
         rec.group.scale.y = Math.min(1, rec.group.scale.y + dt * 2.1);
       }
-      const gy = FLY_Y[e.type] ? rec.baseY + Math.sin(now / 480 + e.id) * 0.09 : rec.baseY;
+      const gy = FLY_Y[e.type] ? rec.baseY + Math.sin(this.animTime * 2.1 + e.id) * 0.09 : rec.baseY;
       rec.group.position.set(e.x, gy, e.y);
       if (e.kind === 'unit') rec.group.rotation.y = -e.dir;
 
@@ -517,7 +517,7 @@ export class Renderer {
       // 履带/轮式悬挂晃动（行驶时车身小幅起伏）
       if (TRACKED.has(e.type)) {
         if (e.path) {
-          const t = now / 1000;
+          const t = this.animTime;
           rec.group.rotation.z = Math.sin(t * 9 + e.id) * 0.022;
           rec.group.rotation.x = Math.cos(t * 7.3 + e.id * 2) * 0.015;
         } else {
@@ -1417,6 +1417,7 @@ export class Renderer {
     this.lastT = now;
     // 暂停 = 真冻结帧：粒子/序列帧/冲击波环/焦土/建筑动画/水面云影全部停住（dt=0）
     this.animDt = this.game.paused ? 0 : this.frameDt;
+    this.animTime = (this.animTime ?? 0) + this.animDt; // 动画时钟：悬挂晃动/飞行浮沉用它，暂停即冻结
 
     this.syncEntities();
     this.syncProjectiles();

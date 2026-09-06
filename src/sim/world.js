@@ -149,11 +149,19 @@ export class World {
           if (d < bestD) { bestD = d; best = b; }
         }
         if (best) {
-          target.oq = [];
-          target.harvest = { state: 'idle', timer: 0 };
-          target.order = { type: 'move', x: best.x, y: best.y };
+          // 逃向精炼厂先卸货再干活：直接进卸货流程（修复前带着满载去采矿，
+          // 下一车卸货 load 叠加到 1400——一车双倍入账的经济漏洞）
+          if ((target.load || 0) > 0) {
+            target.harvest = { state: 'toRefinery', refId: best.id, oreTx: 0, oreTy: 0, timer: 0 };
+            target.order = { type: 'harvest' };
+            this.setPath(target, best.x, best.y);
+          } else {
+            target.oq = [];
+            target.harvest = { state: 'idle', timer: 0 };
+            target.order = { type: 'move', x: best.x, y: best.y };
+            this.setPath(target, best.x, best.y);
+          }
           target.targetId = null;
-          this.setPath(target, best.x, best.y);
         }
       }
     }
