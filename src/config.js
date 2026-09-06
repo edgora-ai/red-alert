@@ -91,6 +91,7 @@ export const UPGRADES = {
   composite: { name: '复合装甲',   cost: 1800, buildTime: 35, producer: 'radar', prereq: ['ap'], effect: 'armor', value: 1 / 1.2, desc: '全军承受伤害 -17%' },
   engine:    { name: '引擎强化',   cost: 1200, buildTime: 25, producer: 'radar', effect: 'speed', value: 1.25, desc: '全军机动 +25%' },
   mining:    { name: '采矿优化',   cost: 1500, buildTime: 30, producer: 'radar', prereq: ['refinery'], effect: 'mine', value: 1.3, desc: '采矿效率 +30%' },
+  bunker:    { name: '装甲工事',   cost: 1600, buildTime: 35, producer: 'radar', prereq: ['factory'], effect: 'barmor', value: 1 / 1.3, desc: '建筑承受伤害 -23%' },
   super:     { name: '轨道打击授权', cost: 2500, buildTime: 45, producer: 'radar', prereq: ['npower'], effect: 'super', desc: '解锁超级武器「轨道动能炮」（V 键 / 侧栏按钮，180s 冷却）' },
   // —— 阵营专属科技（对称克制的打法深度）——
   lens:      { name: '聚焦透镜',   cost: 900,  buildTime: 30, producer: 'radar', prereq: ['npower'], side: 'player', effect: 'wfire', value: 1.25, affects: ['prismW', 'beam', 'mirageW'], desc: '光棱/粒子束/幻影武器伤害 +25%' },

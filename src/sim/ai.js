@@ -35,12 +35,37 @@ export class Commander {
     this.macro();
     this.produceArmy();
     this.launchWaves();
+    this.escortRanged();
     this.defendBase();
     this.dodgeSuper();
     this.harassEconomy();
     this.tryCapture();
     this.research();
     this.fireSuper();
+  }
+
+  // 远程梯队保持：火箭炮/导弹车 A 过去会冲到敌人脸上拉锯——
+  // 让它们跟随近战梯队质心的己方一侧 5 格架设，经典"炮兵跟坦克"队形
+  escortRanged() {
+    if ((this.escortN ?? 0) > 0) { this.escortN--; return; }
+    this.escortN = 4; // 每 2s 调整一次架设位
+    const w = this.world, s = this.side;
+    const isRanged = t => t.type === 'mlrs' || t.type === 'longsword';
+    const ranged = w.unitsOf(s).filter(u => u.order?.type === 'attackmove' && isRanged(u));
+    if (!ranged.length) return;
+    const melee = w.unitsOf(s).filter(u => u.order?.type === 'attackmove' && !isRanged(u) && !UNITS[u.type]?.fly);
+    if (!melee.length) return;
+    const cx = melee.reduce((sum, u) => sum + u.x, 0) / melee.length;
+    const cy = melee.reduce((sum, u) => sum + u.y, 0) / melee.length;
+    const base = w.buildingsOf(s)[0];
+    if (!base) return;
+    const dx = base.x - cx, dy = base.y - cy;
+    const len = Math.hypot(dx, dy) || 1;
+    const px = cx + (dx / len) * 5, py = cy + (dy / len) * 5;
+    for (const u of ranged) {
+      if (Math.hypot(u.x - px, u.y - py) < 3) continue; // 已在架设位
+      w.issueCommand(s, { type: 'attackmove', ids: [u.id], x: px, y: py });
+    }
   }
 
   // 经济骚扰：抽 2 个空闲猎手猎杀玩家矿车（经典 RTS AI 的经济打击，60s 限频）
@@ -212,7 +237,7 @@ export class Commander {
     if (!radar || radar.queue.length) return;
     const owned = w.upgrades[s].owned;
     const order = this.diff.incomeMul > 1.2
-      ? ['ap', 'mining', 'super', 'composite', 'engine', 'overload']
+      ? ['ap', 'mining', 'super', 'composite', 'engine', 'bunker', 'overload']
       : ['mining', 'ap'];
     for (const id of order) {
       if (owned.has(id)) continue;

@@ -59,6 +59,7 @@ export function updateHarvester(world, u) {
       if (world.distToBuilding(u, ref) < 1.2) {
         const gain = Math.round(u.load || 0);
         world.credits[u.side] += gain;
+        if (world.stats[u.side]) world.stats[u.side].mined += gain; // 采矿总量战报
         world.fx.push({ type: 'text', text: `+$${gain}`, color: '#ffd866', x: ref.x, y: ref.y - 0.8, ttl: 80, max: 80 }); // 飘字入账
         u.load = 0;
         u.path = null;

@@ -27,8 +27,8 @@ export class World {
     this.fog = new Uint8Array(MAP_W * MAP_H); // 0 未见 1 探索 2 可见（玩家视角）
     this.alerts = [];   // 受击警报点（小地图红点ping + AI 防守），UI 消费
     this.stats = {      // 战报统计（结算面板用）
-      player: { kills: 0, lost: 0, built: 0, spent: 0 },
-      enemy: { kills: 0, lost: 0, built: 0, spent: 0 },
+      player: { kills: 0, lost: 0, built: 0, spent: 0, mined: 0, superFired: 0 },
+      enemy: { kills: 0, lost: 0, built: 0, spent: 0, mined: 0, superFired: 0 },
     };
     // 全局科技加成（fire/armor/speed/mine 倍率，owned=已研发集合，wf=武器专属火力）
     this.upgrades = {
@@ -542,6 +542,7 @@ export class World {
     }
     x = clamp(x, 1, this.w - 1); y = clamp(y, 1, this.h - 1);
     this.superCd[side] = ECON.super.cooldown;
+    if (this.stats[side]) this.stats[side].superFired++; // 超武发射次数战报
     this.fx.push({ type: 'superAim', x, y, ttl: ECON.super.delay * 2, max: ECON.super.delay * 2, side });
     this.strikes.push({ x, y, t: ECON.super.delay, side });
     this.events.push({ type: 'superLaunch', x, y });

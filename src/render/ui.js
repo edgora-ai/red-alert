@@ -264,6 +264,8 @@ export class UI {
         `<span class="h">对局时长</span><span class="pl">${mm}:${ss}</span><span class="h"></span><span class="h"></span>`,
         `<span class="h">击毁</span><span class="pl">${s.player.kills}</span><span class="en">${s.enemy.kills}</span><span class="h"></span>`,
         `<span class="h">损失</span><span class="pl">${s.player.lost}</span><span class="en">${s.enemy.lost}</span><span class="h"></span>`,
+        `<span class="h">采矿总量</span><span class="pl">$${s.player.mined ?? 0}</span><span class="en">$${s.enemy.mined ?? 0}</span><span class="h"></span>`,
+        `<span class="h">超武发射</span><span class="pl">${s.player.superFired ?? 0} 次</span><span class="en">${s.enemy.superFired ?? 0} 次</span><span class="h"></span>`,
         `<span class="h">建造</span><span class="pl">${s.player.built}</span><span class="en">${s.enemy.built}</span><span class="h"></span>`,
         `<span class="h">军费开支</span><span class="pl">$${s.player.spent}</span><span class="en">$${s.enemy.spent}</span><span class="h"></span>`,
         `<span class="h">剩余资金</span><span class="pl">$${Math.floor(c.player)}</span><span class="en">$${Math.floor(c.enemy)}</span><span class="h"></span>`,

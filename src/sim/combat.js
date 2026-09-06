@@ -267,7 +267,10 @@ export function applyDamage(world, target, raw, dtype, src = null) {
   const mult = DAMAGE_MULT[dtype][armor] ?? 1;
   if (mult <= 0) return;
   const ups = world.upgrades?.[target.side];
-  target.hp -= (raw * mult) / (ups?.armor || 1); // 复合装甲减伤
+  // 复合装甲护单位、装甲工事护建筑（独立科技线）。
+  // 承伤倍率按"乘法"生效（value=1/1.2 即 ×0.833=-17%）——写成除法会把减伤变成增伤
+  const armorUp = target.kind === 'building' ? (ups?.barmor || 1) : (ups?.armor || 1);
+  target.hp -= raw * mult * armorUp;
   target.flash = 4; // 受击闪白（渲染用）
   if (world.unitDef(target)?.stealth) target.cloak = Math.max(target.cloak || 0, 45); // 受击显形 1.5s
   world.onDamaged(target, src);

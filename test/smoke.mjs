@@ -678,5 +678,51 @@ check('天启坦克双联导弹可对空', drone.hp < drone.maxHp, `ghost hp ${M
     `order=${eng.order?.type}`);
 }
 
+// —— 阶段25：v8 第十八轮审查回归（装甲工事 / 战报维度 / 远程梯队） ——
+{
+  // 装甲工事：建筑承伤 ÷1.3（约 -23%）
+  world.upgrades.player.barmor = 1 / 1.3;
+  const bsp = freeSpotN(46, 30, 2);
+  const pw18 = world.addBuilding('player', 'power', bsp.tx, bsp.ty);
+  const hpB = pw18.hp;
+  const { applyDamage: ad18 } = await import('../src/sim/combat.js');
+  ad18(world, pw18, 100, 'shell', null);
+  const dealtB = hpB - pw18.hp;
+  check('装甲工事：建筑承伤 -23%（100 → 77）', Math.abs(dealtB - 100 / 1.3) < 1.2,
+    `dealt=${dealtB.toFixed(1)} expect=${(100 / 1.3).toFixed(1)}`);
+  world.upgrades.player.barmor = 1; // 还原
+  world.killEntity(pw18);
+  // 复合装甲回归：承伤倍率为乘法语义（修复前除法把 -17% 写成 +20% 增伤）
+  world.upgrades.player.armor = 1 / 1.2;
+  const cu = world.addUnit('player', 'tyrant', 46.5, 33.5);
+  const hpC = cu.hp;
+  ad18(world, cu, 100, 'shell', null);
+  check('复合装甲：单位承伤 -17%（乘法语义）', Math.abs((hpC - cu.hp) - 100 * (1 / 1.2)) < 1.2,
+    `dealt=${(hpC - cu.hp).toFixed(1)} expect=${(100 / 1.2).toFixed(1)}`);
+  world.upgrades.player.armor = 1;
+  world.killEntity(cu);
+  // 战报新维度：本局长跑后采矿总量与超武发射均有累计
+  check('战报统计：采矿总量已累计', (world.stats.player.mined ?? 0) > 0,
+    `mined=$${world.stats.player.mined}`);
+  check('战报统计：超武发射次数已累计', (world.stats.player.superFired ?? 0) >= 1,
+    `fired=${world.stats.player.superFired}`);
+}
+{
+  // 远程梯队保持：AI 火箭炮在 attackmove 中被调到近战梯队后方架设位
+  const wa = createSkirmish(4242);
+  const aia = new Commander(wa, 'enemy', 'normal');
+  const ml = wa.addUnit('enemy', 'mlrs', 40.5, 44.5);
+  ml.order = { type: 'attackmove', x: 20, y: 60 };
+  const melee = wa.addUnit('enemy', 'tyrant', 30.5, 50.5);
+  melee.order = { type: 'attackmove', x: 20, y: 60 };
+  aia.escortN = 0;
+  for (let i = 0; i < 16; i++) aia.tick();
+  check('AI 远程梯队跟随近战架设（attackmove 保持）', ml.order?.type === 'attackmove'
+    && Math.hypot(ml.x - (melee.x + (wa.buildingsOf('enemy')[0].x - melee.x) * 0.31),
+      ml.y - (melee.y + (wa.buildingsOf('enemy')[0].y - melee.y) * 0.31)) < 12,
+    `mlrs order=${ml.order?.type}`);
+  wa.killEntity(ml); wa.killEntity(melee);
+}
+
 console.log(`\n${failures === 0 ? '全部通过 ✔' : failures + ' 项失败 ✘'}`);
 process.exit(failures === 0 ? 0 : 1);
