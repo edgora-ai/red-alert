@@ -541,14 +541,20 @@ export class Renderer {
           }
         }
       }
-      // 磁暴瘫痪：单位僵直冒电火花
-      if (e.kind === 'unit' && e.stun > 0 && (rec.stunT = (rec.stunT ?? 0) - dt) <= 0) {
-        rec.stunT = 0.09;
-        this.particles.spawn({
-          x: e.x + (Math.random() - 0.5) * 0.45, y: 0.35 + Math.random() * 0.6, z: e.y + (Math.random() - 0.5) * 0.45,
-          vx: (Math.random() - 0.5) * 1.2, vy: -0.3 - Math.random() * 0.8, vz: (Math.random() - 0.5) * 1.2,
-          life: 0.2, size: 0.1, sizeEnd: 0.02, col0: 0x8fd4ff, col1: 0x2a6f9f, alpha: 0.95,
-        });
+      // 磁暴瘫痪：单位僵直冒电火花 + 随机小电弧缠绕
+      if (e.kind === 'unit' && e.stun > 0) {
+        if ((rec.stunT = (rec.stunT ?? 0) - dt) <= 0) {
+          rec.stunT = 0.09;
+          this.particles.spawn({
+            x: e.x + (Math.random() - 0.5) * 0.45, y: 0.35 + Math.random() * 0.6, z: e.y + (Math.random() - 0.5) * 0.45,
+            vx: (Math.random() - 0.5) * 1.2, vy: -0.3 - Math.random() * 0.8, vz: (Math.random() - 0.5) * 1.2,
+            life: 0.2, size: 0.1, sizeEnd: 0.02, col0: 0x8fd4ff, col1: 0x2a6f9f, alpha: 0.95,
+          });
+        }
+        if ((rec.arcT = (rec.arcT ?? 0) - dt) <= 0) {
+          rec.arcT = 0.3 + Math.random() * 0.2;
+          this.spawnStunArc(e.x, e.y);
+        }
       }
 
       // 动画部件
@@ -766,9 +772,10 @@ export class Renderer {
   // ---------- 特效（sim fx → 粒子/光束网格/灯光/震屏） ----------
   syncFx() {
     const w = this.world;
+    const frozen = this.game.paused; // 暂停 = 冻结帧：特效/粒子计时全部停住
     for (const f of w.fx) {
-      f.ttl -= 1;
-      const a = Math.max(0, f.ttl / f.max);
+      if (!frozen) f.ttl -= 1;
+      const a = Math.max(0, Math.min(1, f.ttl / f.max));
       if (f.type === 'boom') {
         if (!f._done) {
           f._done = true;
@@ -993,6 +1000,7 @@ export class Renderer {
               g.add(glow);
             }
           }
+          // 命中点辉光（随光束淡出收缩）
           const p1 = new THREE.Vector3(f.x1, f.alt1 ?? 0.42, f.y1), p2 = new THREE.Vector3(f.x2, beam ? 0.5 : 0.35, f.y2);
           if (!f._noStretch) for (const child of g.children) this.stretchBetween(child, p1, p2);
           const hitGlow = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -1002,6 +1010,8 @@ export class Renderer {
           hitGlow.scale.setScalar(beam ? 0.85 : 0.5);
           hitGlow.userData.baseO = 0.95;
           g.add(hitGlow);
+          // 光束/电弧 renderOrder 高于战争迷雾：雾边缘交火的弹道不被遮蔽
+          g.traverse(o => { o.renderOrder = 7; });
           f._mesh = g;
           this.scene.add(g);
           this.particles.impact(f.x2, f.y2, col.getHex());
@@ -1029,12 +1039,39 @@ export class Renderer {
         w.fx.splice(i, 1);
       }
     }
-    // 爆炸灯衰减（秒级）
+    // 爆炸灯衰减（秒级；暂停时冻结）
     for (const l of this.boomLights) {
       if (!l.visible) continue;
+      if (frozen) continue;
       if ((l.userData.ttl -= this.frameDt) <= 0) { l.visible = false; l.intensity = 0; }
       else l.intensity *= Math.pow(0.02, this.frameDt);
     }
+    // 瘫痪电弧池衰减（暂停时冻结）
+    for (const a of this.stunArcs ?? []) {
+      if (a.ttl > 0 && !frozen && (a.ttl -= this.frameDt) <= 0) a.line.visible = false;
+    }
+  }
+
+  // 瘫痪单位身上随机小电弧（复用 6 段折线，对象池上限 6 条）
+  spawnStunArc(x, y) {
+    this.stunArcs ??= [];
+    let arc = this.stunArcs.find(a => a.ttl <= 0);
+    if (!arc) {
+      if (this.stunArcs.length >= 6) arc = this.stunArcs[0];
+      else {
+        arc = { line: new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x9fdcff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false })), ttl: 0 };
+        this.scene.add(arc.line);
+        this.stunArcs.push(arc);
+      }
+    }
+    const pts = [];
+    for (let i = 0; i <= 4; i++) {
+      pts.push(new THREE.Vector3(x + (Math.random() - 0.5) * 0.7, 0.25 + Math.random() * 0.5, y + (Math.random() - 0.5) * 0.7));
+    }
+    arc.line.geometry.setFromPoints(pts);
+    arc.line.visible = true;
+    arc.line.material.opacity = 0.85;
+    arc.ttl = 0.12;
   }
 
   stretchBetween(mesh, p1, p2) {

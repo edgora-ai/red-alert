@@ -128,6 +128,8 @@ export class Sound {
       if (e.type === 'shot') this.eventHeat = Math.min(1.2, this.eventHeat + 0.025);
       if (e.type === 'boom') this.eventHeat = Math.min(1.2, this.eventHeat + (e.big ? 0.16 : 0.08));
       if (e.type === 'underAttack') this.eventHeat = Math.min(1.2, this.eventHeat + 0.2);
+      if (e.type === 'superHit') this.eventHeat = Math.min(1.2, this.eventHeat + 0.5); // 超武落点直接拉满段位
+      if (e.type === 'siren') this.eventHeat = Math.min(1.2, this.eventHeat + 0.15);
       const gap = { shot: 60, boom: 80, deposit: 350, move: 140, select: 90, ready: 400, error: 250, underAttack: 1500, promote: 300, superLaunch: 1200, superHit: 900, siren: 550, killConfirm: 1200, lowPower: 2500 }[e.type] ?? 60;
       if (now - (this.last[e.type] || 0) < gap) continue;
       this.last[e.type] = now;
@@ -137,9 +139,14 @@ export class Sound {
 
   update(dt) {
     if (!this.ctx) return;
-    this.eventHeat = Math.max(0, this.eventHeat - dt * 0.35);
-    this.heat += (Math.min(1, this.eventHeat) - this.heat) * Math.min(1, dt * 1.5);
+    // 热度动态：攻击快（战斗一起音乐立刻跟上）、衰减慢（战斗结束余韵保留）
+    this.eventHeat = Math.max(0, this.eventHeat - dt * 0.28);
+    this.heat += (Math.min(1, this.eventHeat) - this.heat) * Math.min(1, dt * 2.2);
     this.scheduleMusic();
+    // 远处战场闷雷：战斗热度中上时随机低频滚雷，增强空间纵深
+    if (this.heat > 0.3 && Math.random() < dt * 0.14) {
+      this.noise({ dur: 1.2 + Math.random(), type: 'lowpass', freq: 120, gain: 0.05 + this.heat * 0.06, delay: 0.1, out: this.musicBus });
+    }
   }
 
   play(e, cam) {
@@ -177,7 +184,7 @@ export class Sound {
         this.noise({ dur: 0.03, type: 'bandpass', freq: 1200, gain: 0.3, out, delay: 0.045 });
         break;
       case 'sniperW': // 反器材狙击：钉墙瞬态 + 低频拖尾
-        this.noise({ dur: 0.025, type: 'highpass', freq: 4500, gain: 0.7, out });
+        this.noise({ dur: 0.025, type: 'highpass', freq: 4500, gain: 0.55, out });
         this.noise({ dur: 0.09, type: 'bandpass', freq: 900, gain: 0.6, out });
         this.thump(95, 0.18, 0.5, out, 0.01);
         this.noise({ dur: 0.3, type: 'lowpass', freq: 500, gain: 0.2, out, delay: 0.06 });
@@ -231,10 +238,10 @@ export class Sound {
         this.thump(85, 0.32, 0.85, out, 0.34);
         break;
       case 'teslaW': // 磁暴电弧：充能爬升 + 电流爆裂 + 低频震荡
-        this.tone({ freq: 70, dur: 0.28, type: 'sawtooth', gain: 0.2, slideTo: 700, out, lp: 2600 });
-        this.noise({ dur: 0.06, type: 'highpass', freq: 3200, gain: 0.5, out, delay: 0.26 });
-        this.noise({ dur: 0.2, type: 'bandpass', freq: 1800 + Math.random() * 800, gain: 0.35, out, delay: 0.28 });
-        this.thump(80, 0.25, 0.7, out, 0.27);
+        this.tone({ freq: 70, dur: 0.28, type: 'sawtooth', gain: 0.27, slideTo: 700, out, lp: 2600 });
+        this.noise({ dur: 0.06, type: 'highpass', freq: 3200, gain: 0.55, out, delay: 0.26 });
+        this.noise({ dur: 0.2, type: 'bandpass', freq: 1800 + Math.random() * 800, gain: 0.4, out, delay: 0.28 });
+        this.thump(80, 0.25, 0.75, out, 0.27);
         break;
       case 'prismW': case 'mirageW': // 光棱/幻影光束：高频切裂 + 下滑光鸣
         this.zap(1900, 320, 0.16, 0.35, out);
@@ -445,9 +452,15 @@ export class Sound {
 
   // ---------- 自适应配乐 v3：8 小节乐段编曲 ----------
   // 结构：A 段(0-3 小节) 主题动机 → B 段(4-7) 回应；第 7 小节军鼓滚奏填入；
-  // 热度四档：t0 巡逻(弦垫+稀疏贝斯) → t1 交火(+底鼓/镲/琶音) → t2 战斗(+军鼓+主旋律) → t3 高潮(移调+镲片加密)
+  // 热度四档：t0 巡逻(弦垫+太鼓行进) → t1 交火(+底鼓/镲/琶音) → t2 战斗(+军鼓+主旋律) → t3 高潮(移调+镲片加密)
   scheduleMusic() {
     const ctx = this.ctx;
+    if (!ctx) return;
+    // 静音/音乐音量为零：跳过节点调度，只推进步进指针（省 CPU）
+    if (this.settings.muted || this.settings.music <= 0) {
+      this.nextStepT = ctx.currentTime;
+      return;
+    }
     const spb = 60 / this.bpm / 4;
     const ahead = ctx.currentTime + 0.3;
     if (this.nextStepT < ctx.currentTime - 0.5) this.nextStepT = ctx.currentTime;
@@ -510,6 +523,10 @@ export class Sound {
         freq: root * 2, dur: spb16 * 0.85, type: 'sawtooth', gain: (0.055 + heat * 0.07) * duck,
         delay, out: this.musicBus, lp: 350 + heat * 900, vary: false,
       });
+    }
+    // 巡逻段太鼓行进脉冲（低热度不空场：每小节第 1/9 步低沉太鼓）
+    if (heat <= t1 && (s === 0 || s === 8)) {
+      this.tone({ freq: 68, dur: 0.3, type: 'sine', gain: 0.09, slideTo: 40, delay, out: this.musicBus, vary: false });
     }
     // 底鼓：click + 音高坠落；高潮段加第 4 拍推进
     if (heat > t1 && (s === 0 || s === 8 || (heat > 0.45 && s === 11) || (heat > t3 && s === 4))) {
