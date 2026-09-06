@@ -151,6 +151,12 @@ export class Sound {
     // 热度动态：攻击快（战斗一起音乐立刻跟上）、衰减慢（战斗结束余韵保留）
     this.eventHeat = Math.max(0, this.eventHeat - dt * 0.28);
     this.heat += (Math.min(1, this.eventHeat) - this.heat) * Math.min(1, dt * 2.2);
+    // 战况推 Tempo：热度过半后 BPM 92→100 平滑爬升（白热化更有推进力）
+    const targetBpm = 92 + Math.max(0, this.heat - 0.5) * 16;
+    if (Math.abs(targetBpm - this.bpm) > 0.2) {
+      this.bpm = targetBpm;
+      this.delay.delayTime.setTargetAtTime(60 / this.bpm / 2, this.ctx.currentTime, 1.5);
+    }
     // 胜负分明后战斗配乐淡出（把舞台留给胜负 jingle 与战后余韵）
     if (this.musicPaused) {
       if (this.musicBus.gain.value > 0.01) {
@@ -304,10 +310,19 @@ export class Sound {
     this.tone({ freq, dur, type: 'sine', gain, vary: false });
     this.tone({ freq: freq * 1.5, dur: dur + 0.03, type: 'sine', gain: gain * 0.7, delay: dur * 0.5, vary: false });
   }
-  ready() {
-    this.tone({ freq: 660, dur: 0.1, type: 'triangle', gain: 0.14, vary: false });
-    this.tone({ freq: 990, dur: 0.16, type: 'triangle', gain: 0.14, delay: 0.09, vary: false });
-    this.tone({ freq: 1320, dur: 0.2, type: 'sine', gain: 0.08, delay: 0.16, vary: false });
+  // 就绪音分调：建筑就绪双音上扬 / 战车出库低音双响 / 步兵出营哨音
+  ready(kind = 'building') {
+    if (kind === 'veh') {
+      this.tone({ freq: 196, dur: 0.12, type: 'triangle', gain: 0.13, vary: false });
+      this.tone({ freq: 262, dur: 0.18, type: 'triangle', gain: 0.13, delay: 0.1, vary: false });
+    } else if (kind === 'inf') {
+      this.tone({ freq: 660, dur: 0.16, type: 'sine', gain: 0.12, slideTo: 990, vary: false });
+      this.tone({ freq: 1320, dur: 0.14, type: 'sine', gain: 0.06, delay: 0.12, vary: false });
+    } else {
+      this.tone({ freq: 660, dur: 0.1, type: 'triangle', gain: 0.14, vary: false });
+      this.tone({ freq: 990, dur: 0.16, type: 'triangle', gain: 0.14, delay: 0.09, vary: false });
+      this.tone({ freq: 1320, dur: 0.2, type: 'sine', gain: 0.08, delay: 0.16, vary: false });
+    }
   }
   techDone() { // 科技研发完成：上行军号
     this.fanfare([440, 554, 659, 880], 0.15, 'sawtooth');
@@ -583,11 +598,12 @@ export class Sound {
         delay, out: this.arpOut ?? (this.arpOut = this.makeArpBus()), lp: 2600, vary: false,
       });
     }
-    // 主旋律（战斗热度解锁）：五声动机 + 延迟总线，与琶音形成前后景
+    // 主旋律（战斗热度解锁）：五声动机 + 延迟总线；B 段上移五度做段落对比
     if (heat > t2) {
       const step = Sound.MELODY[(bar % 4) * 16 + s];
       if (step >= 0) {
-        const freq = root * 8 * Math.pow(2, step / 12);
+        const melOct = barInPhrase >= 4 ? 12 : 8;
+        const freq = root * melOct * Math.pow(2, step / 12);
         this.tone({
           freq, dur: spb16 * 1.5, type: 'triangle', gain: 0.05 + (heat - t2) * 0.08,
           delay, out: this.arpOut, lp: 3400, vary: false,

@@ -810,7 +810,7 @@ export class World {
       this.sides[b.side].placing = item;
       if (b.side === 'player') {
         this.messages.push({ side: b.side, text: `${def.name} 已就绪，点击地图放置`, ttl: 180 });
-        this.events.push({ type: 'ready' });
+        this.events.push({ type: 'ready', kind: 'building' });
       }
     } else {
       const u = this.spawnUnitNear(b.side, item, b);
@@ -819,7 +819,7 @@ export class World {
       this.fx.push({ type: 'spawn', x: u.x, y: u.y, ttl: 6, max: 6 }); // 出兵扬尘（渲染层）
       if (b.side === 'player') {
         this.messages.push({ side: b.side, text: `${def.name} 训练完成`, ttl: 90 });
-        this.events.push({ type: 'ready' });
+        this.events.push({ type: 'ready', kind: UNITS[item].inf ? 'inf' : 'veh' });
       }
     }
   }
