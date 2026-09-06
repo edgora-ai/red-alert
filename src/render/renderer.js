@@ -276,9 +276,10 @@ export class Renderer {
     ground.receiveShadow = true;
     this.scene.add(ground);
     // 地图外圈暗色海洋/虚空，避免边缘露出生硬底色
+    // 真机验证修正：必须用不受光的 Basic 材质——Standard 会被 2.6 强度太阳照成灰蓝（#404b56），背离设计意图
     const surround = new THREE.Mesh(
       new THREE.PlaneGeometry(900, 900),
-      new THREE.MeshStandardMaterial({ color: 0x1a2830, roughness: 1 }),
+      new THREE.MeshBasicMaterial({ color: 0x0a1118 }),
     );
     surround.rotation.x = -Math.PI / 2;
     surround.position.set(w.w / 2, -0.08, w.h / 2);

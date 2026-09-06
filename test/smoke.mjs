@@ -1281,5 +1281,24 @@ check('阵营门：玩家无法生产空天航母、AI 无法生产浮空炮艇'
     && mainJs46.includes('graceMul') && aiSrc46.includes('opts.graceMul') && aiSrc46.includes('this.graceMul'));
 }
 
+// —— 阶段39：真机渲染回归（无 GL 降级链 + surround 不受光） ——
+{
+  const { readFileSync } = await import('node:fs');
+  const uiJs = readFileSync('src/render/ui.js', 'utf8');
+  const inputJs = readFileSync('src/render/input.js', 'utf8');
+  const minimapJs = readFileSync('src/render/minimap.js', 'utf8');
+  const rendererJs = readFileSync('src/render/renderer.js', 'utf8');
+  // 真机 P0：Renderer 构造失败（null）时 UI/Input/Minimap 不得裸调 renderer 方法
+  check('真机无GL降级（UI占位图标）', uiJs.includes('placeholderIcon') && uiJs.includes('this.renderer ?'));
+  check('真机无GL降级（Input反投影判空）', inputJs.includes('if (!this.renderer) return { x: 0, y: 0 }'));
+  check('真机无GL降级（Minimap视口框判空）', minimapJs.includes('if (renderer) {'));
+  // 真机 P1：地图外圈 surround 必须不受光——Standard 会被太阳照成灰蓝（#404b56），背离设计
+  check('真机surround不受光（Basic深色）', rendererJs.includes('MeshBasicMaterial({ color: 0x0a1118 })')
+    && !rendererJs.includes('MeshStandardMaterial({ color: 0x1a2830'));
+  // WebGL 缺失提示文案区分环境问题与脚本异常
+  const mainJs = readFileSync('src/main.js', 'utf8');
+  check('真机WebGL提示文案区分环境/异常', mainJs.includes('/webgl/i') && mainJs.includes('无 GPU 加速'));
+}
+
 console.log(`\n${failures === 0 ? '全部通过 ✔' : failures + ' 项失败 ✘'}`);
 process.exit(failures === 0 ? 0 : 1);

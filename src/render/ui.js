@@ -15,6 +15,14 @@ const TABS = {
 const ARMOR_NAMES = { light: '轻甲', heavy: '重甲', air: '空中' };
 
 export class UI {
+  // 无 GL 占位图标：SVG data URL，按类型首字渲染（建造栏在渲染器缺失时用）
+  static placeholderIcon(item) {
+    const def = UNITS[item] || BUILDINGS[item] || UPGRADES[item];
+    const ch = (def?.name || item || '?').slice(0, 1);
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='64' height='48'><rect width='64' height='48' fill='#182230'/><text x='32' y='32' font-size='22' text-anchor='middle' fill='#8fa2b5'>${ch}</text></svg>`;
+    return 'data:image/svg+xml,' + encodeURIComponent(svg);
+  }
+
   constructor(game, world, sound, renderer) {
     this.game = game;
     this.world = world;
@@ -106,7 +114,13 @@ export class UI {
       const btn = document.createElement('button');
       btn.className = 'bbtn';
       const img = document.createElement('img');
-      img.src = this.renderer.getItemIcon(item);
+      // 真机兜底：无 GL 环境下 Renderer 构造失败（null），建造栏用占位图而不抛异常
+      // （逻辑层继续跑，3D 画布黑屏但游戏不崩；有 GL 时正常走 3D 快照图标）
+      try {
+        img.src = this.renderer ? this.renderer.getItemIcon(item) : UI.placeholderIcon(item);
+      } catch {
+        img.src = UI.placeholderIcon(item);
+      }
       img.width = 64; img.height = 48;
       img.alt = def.name;
       btn.appendChild(img);

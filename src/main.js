@@ -36,7 +36,14 @@ const game = {
 // 开始界面最先接线：即使后续子系统初始化失败，入口也永远可点
 function showFatal(msg) {
   const tip = document.getElementById('fatalTip');
-  if (tip) { tip.textContent = `⚠ 脚本异常：${msg}（已拦截，游戏继续运行）`; tip.style.display = 'block'; }
+  if (!tip) return;
+  // WebGL 缺失是环境问题（无头/禁用 GPU），非脚本 bug：文案区分，避免用户误会游戏坏了
+  if (/webgl/i.test(msg)) {
+    tip.textContent = '⚠ 当前环境无 GPU 加速：3D 画面不可用，逻辑对局照常运行（换有 GPU 的浏览器即恢复）';
+  } else {
+    tip.textContent = `⚠ 脚本异常：${msg}（已拦截，游戏继续运行）`;
+  }
+  tip.style.display = 'block';
 }
 let renderer = null, input = null, ui = null, sound = null, minimap = null;
 

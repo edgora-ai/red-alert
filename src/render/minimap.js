@@ -137,13 +137,16 @@ export class Minimap {
     }
 
     // 视口范围：屏幕四角反投影到地面，画四边形（支持旋转视角）
-    const pts = [[0, 0], [renderer.vw, 0], [renderer.vw, renderer.vh], [0, renderer.vh]]
-      .map(([px, py]) => renderer.screenToTile(px, py));
-    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    pts.forEach((p, i) => (i ? ctx.lineTo(p.x * s, p.y * s) : ctx.moveTo(p.x * s, p.y * s)));
-    ctx.closePath();
-    ctx.stroke();
+    // 真机兜底：渲染器缺失时跳过视口框（小地图地形/实体/警报照常画）
+    if (renderer) {
+      const pts = [[0, 0], [renderer.vw, 0], [renderer.vw, renderer.vh], [0, renderer.vh]]
+        .map(([px, py]) => renderer.screenToTile(px, py));
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      pts.forEach((p, i) => (i ? ctx.lineTo(p.x * s, p.y * s) : ctx.moveTo(p.x * s, p.y * s)));
+      ctx.closePath();
+      ctx.stroke();
+    }
   }
 }

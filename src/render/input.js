@@ -75,6 +75,8 @@ export class Input {
   }
 
   s2t(px, py) {
+    // 真机兜底：渲染器缺失时返回零点（输入层不崩；有 GL 时正常反投影）
+    if (!this.renderer) return { x: 0, y: 0 };
     return this.renderer.screenToTile(px, py);
   }
 

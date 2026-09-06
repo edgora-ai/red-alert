@@ -1,3 +1,32 @@
+# E2E 实机试玩报告（真机验证轮）——Chrome 152 实机截图 · 2 真问题归零
+
+> 方法：本机 Chrome 152 真机截图（headless + SwiftShader 软 GL + 无 GL 双模式），demo 自动对局 + battle 场景。
+> 结果：**2 个真机问题全部归零**（逻辑层 100 局零停摆测不到的那类）。
+
+## 真机问题清单（2/2 ✓）
+
+| # | 问题 | 根因 | 修复 | 验证 |
+|---|---|---|---|---|
+| 1（P0） | 无 GL 环境开局即红条报错 + 3D 全黑（`getItemIcon of null`） | headless `--disable-gpu` 下 `new THREE.WebGLRenderer` 抛异常，main try/catch 吞掉后 renderer=null，UI 层裸调 `this.renderer.getItemIcon` | UI 占位 SVG 图标（try/catch 双保险）+ Input.s2t 判空 + Minimap 视口框判空；逻辑层照常跑 | 无 GL 重截：红条消失，建造栏全亮占位图标，$3289/电力200/200 正常 |
+| 2（P1） | 地图外圈灰蓝 `#404b56`（设计应为暗色虚空） | surround 平面用 `MeshStandardMaterial`，被 2.6 强度太阳照亮 | 改 `MeshBasicMaterial({ color: 0x0a1118 })` 不受光 | 同局重截：灰蓝→深灰，取色与设计值一致 |
+
+## 真机验证记录
+
+```
+$ 开始界面：难度/地图/玩法/资源/保护五组选单渲染正常 ✔
+$ battle场景（SwiftShader）：建筑/坦克/树木/矿点/血条/队列航线/小地图/建造栏3D图标全亮，零报错条 ✔
+$ seed=7开局（SwiftShader）：基地/矿车/矿点/战争迷雾黑边正常 ✔
+$ npm test → 全部通过 ✔（137 项，新增 stage 39：5 断言）
+```
+
+## 改进方向（下一轮输入）
+
+1. 移动端触控适配评估（唯一剩余大项）。
+2. 单位语音/击杀播报。
+3. 炮兵 runner 战术补强（脚本问题）。
+
+---
+
 # E2E 实机试玩报告（第 101-150/100 轮）——第二轮 50 局循环 · 问题归零
 
 > 方法：通用单局 runner（test/e2e-one.mjs）再刷 50 局（轮 101-150：4 图 × 3 难度 × 4 玩法 × 4 策略全覆盖）。
