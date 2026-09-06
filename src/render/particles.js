@@ -143,6 +143,7 @@ export class Particles {
   // budget：粒子总预算系数（?lowfx 弱机降档），环境粒子（尘/烟迹/烟囱）按比例抽稀
   constructor(scene, budget = 1) {
     this.budget = budget;
+    this.dyn = 1; // 运行时动态降档系数（帧率自适应，setBudgetFactor 驱动）
     this.add = new Layer(scene, Math.max(400, Math.round(2400 * budget)), THREE.AdditiveBlending, circleTex(0.35), 8);
     this.smoke = new Layer(scene, Math.max(180, Math.round(1100 * budget)), THREE.NormalBlending, circleTex(0.15), 7);
     this.decalTex = scorchTex();
@@ -202,6 +203,9 @@ export class Particles {
 
   setCamera(cam3) { this.cam = cam3; }
 
+  // 帧率自适应降档：dyn<1 时全粒子按比例抽稀（single gate，爆炸略薄但不出戏）
+  setBudgetFactor(f) { this.dyn = Math.max(0, Math.min(1, f)); }
+
   fireball(x, z, r, dur = 0.55, alt = null) {
     const s = this.sprites[this.spriteI++ % this.sprites.length];
     s.t = 0; s.dur = dur; s.r = r;
@@ -216,6 +220,7 @@ export class Particles {
   }
 
   spawn(o) {
+    if (this.dyn < 1 && Math.random() > this.dyn) return; // 动态降档抽稀
     const layer = o.layer === 'smoke' ? this.smoke : this.add;
     const p = {
       x: o.x, y: o.y ?? 0.3, z: o.z,

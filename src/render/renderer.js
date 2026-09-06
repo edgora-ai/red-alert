@@ -970,7 +970,9 @@ export class Renderer {
         if (!f._done) {
           f._done = true;
           this.particles.muzzle(f.x, f.y, f.dir, f.big, f.alt > 0 ? f.alt : 0.4);
-          if (f.big) {
+          // 灯池只给近处枪口焰用：远处火光抢爆灯池会让真正的爆炸丢灯光
+          const near = this.cam && Math.hypot(f.x - this.cam.x, f.y - this.cam.y) < 20;
+          if (f.big && near) {
             const light = this.boomLights.find(l => !l.visible);
             if (light) {
               light.position.set(f.x, f.alt > 0 ? f.alt : 0.6, f.y);
@@ -1473,6 +1475,16 @@ export class Renderer {
     this.syncFx();
     this.syncHelpers();
     this.particles.update(this.animDt);
+    // 自适应性能：帧率持续 <40fps 自动降档粒子（0.6 → 0.35），手动 lowfx 不参与
+    this.fpsAcc = (this.fpsAcc ?? 0) + this.frameDt;
+    if (++this.fpsN >= 45) {
+      const fps = this.fpsN / this.fpsAcc;
+      this.fpsAcc = 0; this.fpsN = 0;
+      if (fps < 40 && !this.lowfx && (this.dynLevel ?? 0) < 2) {
+        this.dynLevel = (this.dynLevel ?? 0) + 1;
+        this.particles.setBudgetFactor(this.dynLevel === 1 ? 0.6 : 0.35);
+      }
+    }
     if (this.world.tickCount !== this.lastFogTick && this.world.tickCount % 6 === 0) {
       this.lastFogTick = this.world.tickCount;
       this.updateFogTexture();
