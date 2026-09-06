@@ -573,6 +573,16 @@ export class Renderer {
         rec.dustT = 0.12 + Math.random() * 0.1;
         this.particles.dust(e.x - Math.cos(e.dir) * 0.4, e.y - Math.sin(e.dir) * 0.4);
       }
+      // 飞行单位引擎尾迹（基洛夫浓烟 / 无人机淡痕）
+      if (e.kind === 'unit' && UNITS[e.type]?.fly && e.path && (rec.exhaustT = (rec.exhaustT ?? 0) - dt) <= 0) {
+        rec.exhaustT = e.type === 'kirov' ? 0.15 : 0.3;
+        this.particles.spawn({
+          layer: 'smoke', x: e.x - Math.cos(e.dir) * 0.5, y: rec.baseY - 0.12, z: e.y - Math.sin(e.dir) * 0.5,
+          vx: (Math.random() - 0.5) * 0.3, vy: -0.08, vz: (Math.random() - 0.5) * 0.3,
+          life: 0.9, size: 0.13, sizeEnd: e.type === 'kirov' ? 0.7 : 0.38,
+          col0: 0x6a6a6a, col1: 0x2e2e2e, alpha: e.type === 'kirov' ? 0.3 : 0.16, grav: 0.05,
+        });
+      }
       // 建筑烟囱
       if (ud.smokeStacks && (rec.smokeT -= dt) <= 0) {
         rec.smokeT = 0.28 + Math.random() * 0.2;
@@ -857,6 +867,44 @@ export class Renderer {
             });
           }
         }
+      } else if (f.type === 'spawn') {
+        if (!f._done) {
+          f._done = true;
+          for (let i = 0; i < 6; i++) {
+            const a = Math.random() * Math.PI * 2;
+            this.particles.spawn({
+              layer: 'smoke', x: f.x + Math.cos(a) * 0.3, y: 0.15, z: f.y + Math.sin(a) * 0.3,
+              vx: Math.cos(a) * 1.1, vy: 0.35 + Math.random() * 0.3, vz: Math.sin(a) * 1.1,
+              life: 0.6 + Math.random() * 0.3, size: 0.2, sizeEnd: 0.6,
+              col0: 0x8a8072, col1: 0x554e44, alpha: 0.3, grav: -0.1, drag: 2,
+            });
+          }
+        }
+      } else if (f.type === 'text') {
+        // 飘字（入账/占领提示）：Canvas 精灵上浮渐隐
+        if (!f._mesh) {
+          const cv = document.createElement('canvas');
+          cv.width = 192; cv.height = 56;
+          const c = cv.getContext('2d');
+          c.font = '700 34px "PingFang SC", system-ui, sans-serif';
+          c.textAlign = 'center';
+          c.textBaseline = 'middle';
+          c.shadowColor = 'rgba(0,0,0,0.85)';
+          c.shadowBlur = 7;
+          c.fillStyle = f.color;
+          c.fillText(f.text, 96, 28);
+          const tex = new THREE.CanvasTexture(cv);
+          tex.colorSpace = THREE.SRGBColorSpace;
+          const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+          sp.scale.set(2.6, 0.76, 1);
+          sp.renderOrder = 21;
+          f._mesh = sp;
+          f._rise = 0;
+          this.scene.add(sp);
+        }
+        f._rise += this.frameDt * 0.55;
+        f._mesh.position.set(f.x, 1.0 + f._rise, f.y);
+        f._mesh.material.opacity = Math.max(0, Math.min(1, f.ttl / (f.max * 0.45)));
       } else if (f.type === 'muzzle') {
         if (!f._done) {
           f._done = true;
@@ -967,9 +1015,14 @@ export class Renderer {
       if (f.ttl <= 0) {
         if (f._mesh) {
           this.scene.remove(f._mesh);
-          for (const child of f._mesh.children) {
-            child.material.dispose();
-            if (!child.isSprite) child.geometry.dispose(); // Sprite 共享内置几何体，dispose 会毁掉全局血条
+          if (f._mesh.isSprite) {
+            f._mesh.material.map?.dispose(); // 飘字纹理独享，需释放
+            f._mesh.material.dispose();
+          } else {
+            for (const child of f._mesh.children) {
+              child.material.dispose();
+              if (!child.isSprite) child.geometry.dispose(); // Sprite 共享内置几何体，dispose 会毁掉全局血条
+            }
           }
           f._mesh = null;
         }

@@ -190,6 +190,7 @@ export class World {
     if (e.kind === 'unit') this.stats[e.side].lost++;
     if (killer && !killer.dead && killer.side !== e.side) {
       this.stats[killer.side].kills++;
+      if (killer.side === 'player') this.events.push({ type: 'killConfirm' }); // 击杀确认音（音频层限频）
       const def = this.defOf(e);
       this.addXp(killer, Math.round((def.cost || 300) * 0.3 + (e.maxHp || 100) * 0.35));
     }
@@ -520,6 +521,8 @@ export class World {
   updateStrikes() {
     for (let i = this.strikes.length - 1; i >= 0; i--) {
       const s = this.strikes[i];
+      // 敌方打击预警期：周期性警报声浪（配合全屏红脉冲）
+      if (s.side === 'enemy' && s.t > 0 && s.t % 12 === 0) this.events.push({ type: 'siren', x: s.x, y: s.y });
       if (--s.t > 0) continue;
       this.strikes.splice(i, 1);
       splashDamage(this, s.x, s.y, { dmg: ECON.super.dmg, dtype: 'shell', splash: ECON.super.radius }, null);
@@ -552,6 +555,7 @@ export class World {
       if (b.kind !== 'building' || b.dead || b.type !== 'outpost') continue;
       if (b.side !== 'player' && b.side !== 'enemy') continue;
       this.credits[b.side] += ECON.neutral.income;
+      if (b.side === 'player') this.fx.push({ type: 'text', text: `+$${ECON.neutral.income}`, color: '#ffd866', x: b.x, y: b.y - 0.9, ttl: 80, max: 80 });
       this.events.push({ type: 'deposit', x: b.x, y: b.y });
     }
   }
@@ -735,6 +739,7 @@ export class World {
       const u = this.spawnUnitNear(b.side, item, b);
       if (!u) { b.progress = total; return; } // 出口被堵，等待
       b.queue.shift(); b.progress = 0;
+      this.fx.push({ type: 'spawn', x: u.x, y: u.y, ttl: 6, max: 6 }); // 出兵扬尘（渲染层）
       if (b.side === 'player') {
         this.messages.push({ side: b.side, text: `${def.name} 训练完成`, ttl: 90 });
         this.events.push({ type: 'ready' });
@@ -760,6 +765,7 @@ export class World {
       t.side = u.side;
       t.queue = []; t.progress = 0;
       const label = BUILDINGS[t.type].name;
+      if (u.side === 'player') this.fx.push({ type: 'text', text: wasNeutral ? '占领！' : '夺占！', color: '#7ee787', x: t.x, y: t.y - 1, ttl: 90, max: 90 });
       this.messages.push({ side: u.side, text: `${wasNeutral ? '已占领中立' : '已占领敌方'}${label}！`, ttl: 150 });
       this.events.push({ type: 'capture' });
       this.entities.delete(u.id);

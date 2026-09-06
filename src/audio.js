@@ -128,7 +128,7 @@ export class Sound {
       if (e.type === 'shot') this.eventHeat = Math.min(1.2, this.eventHeat + 0.025);
       if (e.type === 'boom') this.eventHeat = Math.min(1.2, this.eventHeat + (e.big ? 0.16 : 0.08));
       if (e.type === 'underAttack') this.eventHeat = Math.min(1.2, this.eventHeat + 0.2);
-      const gap = { shot: 60, boom: 80, deposit: 350, move: 140, select: 90, ready: 400, error: 250, underAttack: 1500, promote: 300, superLaunch: 1200, superHit: 900 }[e.type] ?? 60;
+      const gap = { shot: 60, boom: 80, deposit: 350, move: 140, select: 90, ready: 400, error: 250, underAttack: 1500, promote: 300, superLaunch: 1200, superHit: 900, siren: 550, killConfirm: 1200, lowPower: 2500 }[e.type] ?? 60;
       if (now - (this.last[e.type] || 0) < gap) continue;
       this.last[e.type] = now;
       this.play(e, cam);
@@ -158,6 +158,9 @@ export class Sound {
       case 'underAttack': this.klaxon(); break;
       case 'superLaunch': this.superCharge(S(e.x, e.y)); break;
       case 'superHit': this.superBoom(S(e.x, e.y)); break;
+      case 'siren': this.strikeSiren(S(e.x, e.y)); break; // 敌方超武充能循环警报
+      case 'killConfirm': this.killConfirm(); break;      // 击杀确认
+      case 'lowPower': this.lowPowerAlarm(); break;       // 低电力闷警报
       case 'techDone': this.techDone(); break;
       case 'lowPower': this.tone({ freq: 520, dur: 0.5, type: 'square', gain: 0.08, slideTo: 300 }); break;
       case 'win': this.jingle(true); break;
@@ -293,6 +296,10 @@ export class Sound {
   coin(out) {
     this.tone({ freq: 1245, dur: 0.07, type: 'square', gain: 0.07, out, vary: false });
     this.tone({ freq: 1865, dur: 0.1, type: 'square', gain: 0.06, out, delay: 0.06, vary: false });
+    // 矿石倾泻哗啦声（三连颗粒）
+    for (let i = 0; i < 3; i++) {
+      this.noise({ dur: 0.05, type: 'bandpass', freq: 900 + Math.random() * 900, gain: 0.1, out, delay: 0.05 + i * 0.07 });
+    }
   }
   place(out) {
     this.noise({ dur: 0.22, type: 'lowpass', freq: 320, gain: 0.55, out });
@@ -326,6 +333,23 @@ export class Sound {
     this.noise({ dur: 2.6, type: 'lowpass', freq: 140, gain: 0.4, out, delay: 0.18 });
     for (let i = 0; i < 5; i++) {
       this.noise({ dur: 0.05 + Math.random() * 0.06, type: 'bandpass', freq: 700 + Math.random() * 1600, gain: 0.24, out, delay: 0.2 + Math.random() * 0.7 });
+    }
+  }
+  // 敌方超武充能：双音上滑警报（循环触发形成警报声浪）
+  strikeSiren(out) {
+    this.tone({ freq: 620, dur: 0.24, type: 'square', gain: 0.075, slideTo: 980, out, lp: 2200, vary: false });
+    this.tone({ freq: 980, dur: 0.24, type: 'square', gain: 0.075, slideTo: 620, out, lp: 2200, delay: 0.24, vary: false });
+  }
+  // 击杀确认：金属脆响 + 无线电咔哒（有冷却限频，不刷屏）
+  killConfirm() {
+    this.tone({ freq: 1320, dur: 0.05, type: 'triangle', gain: 0.09, vary: false, lp: 4000 });
+    this.tone({ freq: 880, dur: 0.07, type: 'triangle', gain: 0.07, delay: 0.05, vary: false, lp: 4000 });
+    this.noise({ dur: 0.02, type: 'highpass', freq: 4500, gain: 0.05, delay: 0.11 });
+  }
+  // 低电力：双音闷警报
+  lowPowerAlarm() {
+    for (let i = 0; i < 2; i++) {
+      this.tone({ freq: i % 2 ? 220 : 165, dur: 0.28, type: 'square', gain: 0.075, lp: 900, delay: i * 0.3, vary: false });
     }
   }
   fanfare(notes, dur, type) {
@@ -419,7 +443,9 @@ export class Sound {
     lfo.start();
   }
 
-  // ---------- 自适应配乐：A 小调军事合成循环 ----------
+  // ---------- 自适应配乐 v3：8 小节乐段编曲 ----------
+  // 结构：A 段(0-3 小节) 主题动机 → B 段(4-7) 回应；第 7 小节军鼓滚奏填入；
+  // 热度四档：t0 巡逻(弦垫+稀疏贝斯) → t1 交火(+底鼓/镲/琶音) → t2 战斗(+军鼓+主旋律) → t3 高潮(移调+镲片加密)
   scheduleMusic() {
     const ctx = this.ctx;
     const spb = 60 / this.bpm / 4;
@@ -432,26 +458,41 @@ export class Sound {
     }
   }
 
+  // 主旋律：A 小调五声军乐动机（32 步 = 4 小节，-1 为休止），call-response 呼吸感
+  static MELODY = [
+    0, -1, -1, 2, 3, -1, 2, -1, 0, -1, -1, -1, -1, -1, 4, -1,
+    3, -1, -1, 2, 3, -1, 5, -1, 4, -1, 3, -1, 2, -1, -1, -1,
+    0, -1, -1, 2, 3, -1, 2, -1, 5, -1, -1, 4, 3, -1, 2, -1,
+    1, -1, 2, -1, 3, -1, -1, -1, 2, -1, 1, -1, 0, -1, -1, -1,
+  ];
+
   step16(i, t) {
     const ctx = this.ctx;
     const heat = this.heat;
-    const bar = Math.floor(i / 16) % 4;
-    const roots = [55.0, 43.65, 65.41, 49.0]; // Am F C G
-    const root = roots[bar];
+    const bar = Math.floor(i / 16);           // 小节号（全曲递增）
+    const barInPhrase = bar % 8;              // 8 小节乐段内位置
     const s = i % 16;
+    const roots = [55.0, 43.65, 65.41, 49.0]; // Am F C G
+    // 高潮段（t3 且乐段末两小节）整体上移小三度，随后落回——推高潮的编曲手法
+    const lift = heat > 0.78 && barInPhrase >= 6 ? 1.189 : 1;
+    const root = roots[bar % 4] * lift;
     const delay = t - ctx.currentTime;
     const spb16 = (60 / this.bpm / 4);
+    // 热度分层阈值
+    const t1 = 0.22, t2 = 0.5, t3 = 0.78;
 
-    // 弦垫（每小节换和弦）：三振荡器失谐锯齿 + 低通，持续整小节
+    // 弦垫（每小节换和弦）：B 段改开放排列 + 更亮低通，与 A 段形成明暗对比
     if (s === 0 && heat > 0.08) {
-      for (const [mul, det] of [[2, 0], [2, 7], [2.378, -6], [2.996, 5]]) {
+      const open = barInPhrase >= 4;
+      const voicing = open ? [[2, 0], [2.5, 6], [3, -6], [4, 5]] : [[2, 0], [2, 7], [2.378, -6], [2.996, 5]];
+      for (const [mul, det] of voicing) {
         const osc = ctx.createOscillator();
         osc.type = 'sawtooth';
         osc.frequency.value = root * mul;
         osc.detune.value = det;
         const f = ctx.createBiquadFilter();
         f.type = 'lowpass';
-        f.frequency.value = 420 + heat * 700;
+        f.frequency.value = 420 + heat * 900 + (open ? 200 : 0);
         const g = ctx.createGain();
         const g0 = 0.014 + heat * 0.03;
         g.gain.setValueAtTime(0, t);
@@ -462,35 +503,55 @@ export class Sound {
         osc.start(t); osc.stop(t + spb16 * 16 + 0.05);
       }
     }
-    // 贝斯脉冲（8 分）：锯齿 + 滤波包络
+    // 贝斯脉冲（8 分）：底鼓落点让频 40%（侧链泵感）
     if (s % 2 === 0 && heat > 0.12) {
+      const duck = (s === 0 || s === 8) ? 0.6 : 1;
       this.tone({
-        freq: root * 2, dur: spb16 * 0.85, type: 'sawtooth', gain: 0.055 + heat * 0.07,
+        freq: root * 2, dur: spb16 * 0.85, type: 'sawtooth', gain: (0.055 + heat * 0.07) * duck,
         delay, out: this.musicBus, lp: 350 + heat * 900, vary: false,
       });
     }
-    // 底鼓：click + 音高坠落
-    if (s === 0 || s === 8 || (heat > 0.45 && s === 11)) {
+    // 底鼓：click + 音高坠落；高潮段加第 4 拍推进
+    if (heat > t1 && (s === 0 || s === 8 || (heat > 0.45 && s === 11) || (heat > t3 && s === 4))) {
       this.tone({ freq: 950, dur: 0.014, type: 'sine', gain: 0.06, delay, out: this.musicBus, vary: false });
       this.tone({ freq: 135, dur: 0.17, type: 'sine', gain: 0.17 + heat * 0.1, slideTo: 36, delay, out: this.musicBus, vary: false });
     }
-    // 军鼓
+    // 军鼓（正常背拍 + 乐段末小节滚奏填入）
     if (heat > 0.55 && (s === 4 || s === 12)) {
       this.noise({ dur: 0.055, type: 'highpass', freq: 3500, gain: 0.08, delay, out: this.musicBus });
       this.noise({ dur: 0.13, type: 'bandpass', freq: 1800, gain: 0.11 + heat * 0.06, delay, out: this.musicBus });
     }
-    // 镲
-    if (heat > 0.3 && s % 4 === 2) {
+    if (heat > 0.55 && barInPhrase === 7 && s >= 12) {
+      const k = (s - 12) / 4; // 滚奏渐强
+      this.noise({ dur: 0.04, type: 'bandpass', freq: 1800, gain: 0.05 + k * 0.09, delay, out: this.musicBus });
+    }
+    // 段落转换镲片（每 8 小节开头）
+    if (heat > t2 && s === 0 && barInPhrase === 0) {
+      this.noise({ dur: 0.8, type: 'highpass', freq: 6000, gain: 0.06, delay, out: this.musicBus });
+    }
+    // 镲（正常 8 分反拍；高潮段 16 分加密）
+    if (heat > 0.3 && (s % 4 === 2 || (heat > t3 && s % 2 === 1))) {
       this.noise({ dur: 0.045, type: 'highpass', freq: 7500, gain: 0.03 + heat * 0.04, delay, out: this.musicBus });
     }
-    // 琶音（16 分）：方波 + 低通 + 延迟总线
-    if (heat > 0.22) {
+    // 琶音（16 分）：方波 + 低通 + 延迟总线；高潮段上移八度
+    if (heat > t1) {
       const chord = [root * 4, root * 4 * 1.189, root * 6, root * 8];
-      const f = chord[[0, 2, 1, 3, 0, 3, 1, 2, 0, 2, 3, 1, 0, 1, 2, 3][s]];
+      const f = chord[[0, 2, 1, 3, 0, 3, 1, 2, 0, 2, 3, 1, 0, 1, 2, 3][s]] * (heat > t3 ? 2 : 1);
       this.tone({
         freq: f, dur: spb16 * 0.55, type: 'square', gain: 0.02 + heat * 0.038,
         delay, out: this.arpOut ?? (this.arpOut = this.makeArpBus()), lp: 2600, vary: false,
       });
+    }
+    // 主旋律（战斗热度解锁）：五声动机 + 延迟总线，与琶音形成前后景
+    if (heat > t2) {
+      const step = Sound.MELODY[(bar % 4) * 16 + s];
+      if (step >= 0) {
+        const freq = root * 8 * Math.pow(2, step / 12);
+        this.tone({
+          freq, dur: spb16 * 1.5, type: 'triangle', gain: 0.05 + (heat - t2) * 0.08,
+          delay, out: this.arpOut, lp: 3400, vary: false,
+        });
+      }
     }
   }
 

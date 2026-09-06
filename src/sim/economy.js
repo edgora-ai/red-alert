@@ -55,7 +55,9 @@ export function updateHarvester(world, u) {
       }
       // 靠近精炼厂边缘即卸货
       if (world.distToBuilding(u, ref) < 1.2) {
-        world.credits[u.side] += Math.round(u.load || 0);
+        const gain = Math.round(u.load || 0);
+        world.credits[u.side] += gain;
+        world.fx.push({ type: 'text', text: `+$${gain}`, color: '#ffd866', x: ref.x, y: ref.y - 0.8, ttl: 80, max: 80 }); // 飘字入账
         u.load = 0;
         u.path = null;
         h.state = 'idle';
@@ -105,7 +107,7 @@ export function updatePower(world) {
     world.power[side] = { supply, demand, low: demand > supply };
     if (world.power[side].low && !was && side === 'player') {
       world.messages.push({ side, text: '电力不足！防御塔停摆，生产减速', ttl: 150 });
-      world.events.push({ type: 'error' });
+      world.events.push({ type: 'lowPower' }); // 闷警报（比通用错误音更有辨识度）
     }
   }
 }

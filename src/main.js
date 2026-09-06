@@ -154,6 +154,18 @@ function boot() {
       if (game.vignette > 0) game.vignette = Math.max(0, game.vignette - dt * 1.6);
       const vigEl = document.getElementById('vignette');
       if (vigEl) vigEl.style.opacity = game.vignette.toFixed(2);
+
+      // 全屏氛围：敌方超武充能红脉冲（伴随警报声浪）/ 低电力琥珀呼吸
+      const alarmEl = document.getElementById('alarmGlow');
+      if (alarmEl) {
+        const on = world.strikeAlarm && game.started && !world.winner;
+        alarmEl.style.opacity = on ? (0.38 + 0.24 * Math.sin(now / 85)).toFixed(2) : 0;
+      }
+      const powerGlowEl = document.getElementById('lowPowerGlow');
+      if (powerGlowEl) {
+        const low = world.power.player.low && game.started && !world.winner;
+        powerGlowEl.style.opacity = low ? (0.3 + 0.18 * Math.sin(now / 240)).toFixed(2) : 0;
+      }
     } catch (e) {
       // 帧循环永不静默冻结：拦截异常、可见提示、下一帧继续
       showFatal(e.message);
