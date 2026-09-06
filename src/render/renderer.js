@@ -981,7 +981,7 @@ export class Renderer {
             // 锯齿闪电弧：折线分段 + 随机垂直抖动（磁暴电弧专属质感）
             const N = 7;
             const pts = [];
-            const y1 = f.alt1 ?? 0.42, y2 = beam ? 0.5 : 0.35;
+            const y1 = f.alt1 ?? 0.42, y2 = f.alt2 ?? (beam ? 0.5 : 0.35);
             for (let i = 0; i <= N; i++) {
               const k = i / N;
               const sway = Math.sin(k * Math.PI);
@@ -1033,7 +1033,7 @@ export class Renderer {
             }
           }
           // 命中点辉光（随光束淡出收缩）
-          const p1 = new THREE.Vector3(f.x1, f.alt1 ?? 0.42, f.y1), p2 = new THREE.Vector3(f.x2, beam ? 0.5 : 0.35, f.y2);
+          const p1 = new THREE.Vector3(f.x1, f.alt1 ?? 0.42, f.y1), p2 = new THREE.Vector3(f.x2, f.alt2 ?? (beam ? 0.5 : 0.35), f.y2);
           if (!f._noStretch) for (const child of g.children) this.stretchBetween(child, p1, p2);
           const hitGlow = new THREE.Sprite(new THREE.SpriteMaterial({
             map: this.hitGlowTex, color: col, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,

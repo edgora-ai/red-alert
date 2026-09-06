@@ -710,6 +710,9 @@ export class World {
     u.dir = Math.atan2(wp.y - u.y, wp.x - u.x);
     u.x += Math.cos(u.dir) * step;
     u.y += Math.sin(u.dir) * step;
+    // 边界钳制：后撤寻路失败/直线逼近可能把单位引出地图，绝不允许走出战场
+    u.x = clamp(u.x, 0.5, this.w - 0.5);
+    u.y = clamp(u.y, 0.5, this.h - 0.5);
   }
 
   // ---------- 生产 ----------

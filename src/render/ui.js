@@ -1,6 +1,6 @@
 // 侧边建造栏、资源/电力 HUD、消息、选中信息、警报横幅、结算面板、音频设置
 
-import { UNITS, BUILDINGS, UPGRADES, WEAPONS, buildTicks, DIFFS } from '../config.js';
+import { UNITS, BUILDINGS, UPGRADES, WEAPONS, buildTicks, DIFFS, TICK_RATE } from '../config.js';
 import { SIDE_COLORS } from './renderer.js';
 
 // 队列项/实体查定义：科技研发项不在 UNITS/BUILDINGS 里，必须兜底 UPGRADES（否则选中信息崩）
@@ -254,8 +254,11 @@ export class UI {
       this.el.overlayText.textContent = w.winner === 'player' ? '任 务 完 成' : '基 地 陷 落';
       this.el.overlayText.className = w.winner === 'player' ? 'win' : 'lose';
       const s = w.stats, c = w.credits;
+      const mm = String(Math.floor(w.tickCount / TICK_RATE / 60)).padStart(2, '0');
+      const ss = String(Math.floor(w.tickCount / TICK_RATE) % 60).padStart(2, '0');
       this.el.statsGrid.innerHTML = [
         '<span class="h"></span><span class="h pl">蓝军（你）</span><span class="h en">红军（AI）</span><span class="h"></span>',
+        `<span class="h">对局时长</span><span class="pl">${mm}:${ss}</span><span class="h"></span><span class="h"></span>`,
         `<span class="h">击毁</span><span class="pl">${s.player.kills}</span><span class="en">${s.enemy.kills}</span><span class="h"></span>`,
         `<span class="h">损失</span><span class="pl">${s.player.lost}</span><span class="en">${s.enemy.lost}</span><span class="h"></span>`,
         `<span class="h">建造</span><span class="pl">${s.player.built}</span><span class="en">${s.enemy.built}</span><span class="h"></span>`,

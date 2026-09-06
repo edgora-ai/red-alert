@@ -1,6 +1,6 @@
 // AI 指挥官：难度分级、建造序列、爆兵、分波次进攻、基地防守反应、争夺中立建筑、超级武器
 
-import { UNITS, UPGRADES, DIFFS } from '../config.js';
+import { UNITS, UPGRADES, DIFFS, ECON } from '../config.js';
 
 const BUILD_ORDER = [
   'power', 'refinery', 'barracks', 'factory', 'repair', 'power',
@@ -35,9 +35,31 @@ export class Commander {
     this.produceArmy();
     this.launchWaves();
     this.defendBase();
+    this.dodgeSuper();
     this.tryCapture();
     this.research();
     this.fireSuper();
+  }
+
+  // 玩家轨道打击预警期：落点附近的我方部队立即疏散（预警 1.7s，站着吃一发 950 伤害太亏）
+  dodgeSuper() {
+    if (this.dodgeCd > 0) { this.dodgeCd--; return; }
+    const w = this.world, s = this.side;
+    for (const st of w.strikes) {
+      if (st.side === s) continue;
+      const doomed = w.unitsOf(s).filter(u => u.weapon && u.order?.type !== 'attack'
+        && Math.hypot(u.x - st.x, u.y - st.y) < ECON.super.radius + 2);
+      if (!doomed.length) continue;
+      for (const u of doomed) {
+        // 恰好站在落点正中心时方向向量退化为零——随机选个方向逃
+        let dx = u.x - st.x, dy = u.y - st.y;
+        let len = Math.hypot(dx, dy);
+        if (len < 0.1) { const a = Math.random() * Math.PI * 2; dx = Math.cos(a); dy = Math.sin(a); len = 1; }
+        w.issueCommand(s, { type: 'move', ids: [u.id], x: u.x + (dx / len) * 6, y: u.y + (dy / len) * 6 });
+      }
+      this.dodgeCd = 2; // 两次决策（1s）内不再重复疏散
+      return;
+    }
   }
 
   // 建筑序列 + 放置

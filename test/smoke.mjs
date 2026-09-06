@@ -556,5 +556,28 @@ check('天启坦克双联导弹可对空', drone.hp < drone.maxHp, `ghost hp ${M
     && world.events.some(e => e.type === 'ready'));
 }
 
+// —— 阶段19：v8 第七轮审查回归（AI 疏散轨道打击 / 单位不出界） ——
+{
+  const w5 = createSkirmish(555);
+  const ai5 = new Commander(w5, 'enemy', 'normal');
+  const t9 = w5.unitsOf('enemy').find(u => u.weapon);
+  t9.x = 40; t9.y = 40; t9.order = { type: 'idle' }; t9.path = null;
+  w5.upgrades.player.owned.add('super');
+  w5.issueCommand('player', { type: 'superstrike', x: 40, y: 40 });
+  const d0 = Math.hypot(t9.x - 40, t9.y - 40);
+  for (let i = 0; i < 40; i++) { w5.tick(); ai5.tick(); } // 两次决策窗口 + 世界推进让疏散走起来
+  const d1 = Math.hypot(t9.x - 40, t9.y - 40);
+  check('AI 预警期疏散轨道打击落点部队', t9.order?.type === 'move' && (d1 > d0 || Math.hypot(t9.x - 40, t9.y - 40) > 2),
+    `order=${t9.order?.type} dist ${d0.toFixed(1)} -> ${Math.hypot(t9.x - 40, t9.y - 40).toFixed(1)}`);
+}
+{
+  const edge = world.addUnit('player', 'cheetah', 3.5, 3.5);
+  world.issueCommand('player', { type: 'move', ids: [edge.id], x: -20, y: -20 });
+  for (let i = 0; i < 300; i++) world.tick();
+  check('单位不会走出地图边界', edge.x >= 0 && edge.y >= 0 && edge.x <= 96 && edge.y <= 96,
+    `at ${edge.x.toFixed(1)},${edge.y.toFixed(1)}`);
+  world.killEntity(edge);
+}
+
 console.log(`\n${failures === 0 ? '全部通过 ✔' : failures + ' 项失败 ✘'}`);
 process.exit(failures === 0 ? 0 : 1);

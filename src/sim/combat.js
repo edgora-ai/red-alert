@@ -170,6 +170,7 @@ function fireOne(world, e, w, target, off = 0) {
       type: energy ? 'beam' : 'tracer',
       x1: e.x, y1: e.y, x2: target.x, y2: target.y,
       alt1: e.kind === 'building' ? 1.0 : undefined, // 磁暴线圈从塔顶出弧
+      alt2: target.kind === 'building' ? 0.9 : undefined, // 命中建筑打在体表而非贴地
       color: w.color ?? (energy ? (e.side === 'player' ? '#7df9ff' : '#ffb347') : '#ffe9a8'),
       ttl: energy ? 9 : 4, max: energy ? 9 : 4,
       jag: w.jag, // 磁暴锯齿电弧
