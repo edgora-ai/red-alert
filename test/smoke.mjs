@@ -298,5 +298,113 @@ for (let i = 0; i < 90; i++) world.tick();
 check('固守单位不追击（原地不动）', Math.hypot(holder.x - hx, holder.y - hy) < 0.5 && holder.order.type === 'hold',
   `moved ${Math.hypot(holder.x - hx, holder.y - hy).toFixed(2)}`);
 
+// —— 阶段13：超级进化（阵营专属 / 链式 / 麻痹 / 幻影 / 空袭 / 建造加速） ——
+function freeSpotN(tx0, ty0, n) {
+  for (let r = 0; r < 24; r++) {
+    for (let ty = ty0 - r; ty <= ty0 + r; ty++) {
+      for (let tx = tx0 - r; tx <= tx0 + r; tx++) {
+        let ok = true;
+        for (let dy = -1; dy <= n && ok; dy++)
+          for (let dx = -1; dx <= n && ok; dx++)
+            if (!world.inBounds(tx + dx, ty + dy) || world.bgrid[world.idx(tx + dx, ty + dy)] !== -1) ok = false;
+        if (!ok) continue;
+        for (let dy = 0; dy < n; dy++)
+          for (let dx = 0; dx < n; dx++) {
+            world.tiles[world.idx(tx + dx, ty + dy)] = TT.GRASS;
+            world.ore[world.idx(tx + dx, ty + dy)] = 0;
+          }
+        return { tx, ty };
+      }
+    }
+  }
+  return null;
+}
+
+// 13.1 阵营限定门
+check('阵营门：玩家无法生产天启/基洛夫/磁暴线圈',
+  world.canProduce('player', 'apoc').reason === '阵营限定'
+  && world.canProduce('player', 'kirov').reason === '阵营限定'
+  && world.canProduce('player', 'tesla').reason === '阵营限定');
+check('阵营门：AI 无法生产光棱/幻影',
+  world.canProduce('enemy', 'prism').reason === '阵营限定'
+  && world.canProduce('enemy', 'mirage').reason === '阵营限定');
+
+// 13.2 多战车工厂并行加速（+35%）
+world.credits.player = 30000;
+const fsp = freeSpotN(18, 72, 3);
+world.addBuilding('player', 'factory', fsp.tx, fsp.ty);
+const f1 = world.buildingsOf('player').find(b => b.type === 'factory');
+f1.queue.length = 0;
+world.issueCommand('player', { type: 'produce', item: 'hunter' });
+const prog0 = f1.progress;
+for (let i = 0; i < 30; i++) world.tick();
+const progGain = f1.progress - prog0;
+check('多战车工厂并行加速（30 tick 推进 >34）', progGain > 34, `gain=${progGain.toFixed(1)}`);
+world.issueCommand('player', { type: 'cancelProduce', item: 'hunter' });
+
+// 13.3 磁暴线圈：链式电弧跳双目标 + 麻痹
+const sp3 = freeSpotN(40, 40, 1);
+const tesla = world.addBuilding('enemy', 'tesla', sp3.tx, sp3.ty);
+const tv1 = world.addUnit('player', 'cheetah', sp3.tx + 1.5, sp3.ty + 3.5);
+const tv2 = world.addUnit('player', 'cheetah', sp3.tx + 3.5, sp3.ty + 3.5);
+tv1.order = { type: 'hold', x: tv1.x, y: tv1.y };
+tv2.order = { type: 'hold', x: tv2.x, y: tv2.y };
+const th1 = tv1.hp, th2 = tv2.hp;
+let sawStun = false;
+for (let i = 0; i < 300 && !(tv1.hp < th1 && tv2.hp < th2); i++) {
+  world.tick();
+  if (tv1.stun > 0 || tv2.stun > 0) sawStun = true;
+}
+check('磁暴线圈命中主目标', tv1.hp < th1 || tv2.hp < th2,
+  `hp ${Math.round(th1)}/${Math.round(th2)} -> ${Math.round(tv1.hp)}/${Math.round(tv2.hp)}`);
+check('磁暴链式电弧跳到第二个目标', tv1.hp < th1 && tv2.hp < th2);
+check('磁暴麻痹目标（僵直）', sawStun || tv1.stun > 0 || tv2.stun > 0);
+tv1.hp = 0; world.killEntity(tv1); tv2.hp = 0; world.killEntity(tv2);
+tesla.hp = 0; world.killEntity(tesla);
+
+// 13.4 光棱坦克折射束：一束打双目标
+const sp4 = freeSpotN(48, 40, 1);
+const prismT = world.addUnit('player', 'prism', sp4.tx + 0.5, sp4.ty + 0.5);
+prismT.order = { type: 'hold', x: prismT.x, y: prismT.y };
+const pe1 = world.addUnit('enemy', 'tyrant', sp4.tx + 3.5, sp4.ty + 0.5);
+const pe2 = world.addUnit('enemy', 'tyrant', sp4.tx + 5.5, sp4.ty + 0.5);
+pe1.order = { type: 'hold', x: pe1.x, y: pe1.y };
+pe2.order = { type: 'hold', x: pe2.x, y: pe2.y };
+const peh1 = pe1.hp, peh2 = pe2.hp;
+for (let i = 0; i < 300 && !(pe1.hp < peh1 && pe2.hp < peh2); i++) world.tick();
+check('光棱折射束一束打双目标', pe1.hp < peh1 && pe2.hp < peh2,
+  `hp ${Math.round(peh1)}/${Math.round(peh2)} -> ${Math.round(pe1.hp)}/${Math.round(pe2.hp)}`);
+pe1.hp = 0; world.killEntity(pe1); pe2.hp = 0; world.killEntity(pe2);
+prismT.hp = 0; world.killEntity(prismT);
+
+// 13.5 幻影坦克伪装（静止时敌人无法索敌）
+const sp5 = freeSpotN(52, 46, 1);
+const mir = world.addUnit('player', 'mirage', sp5.tx + 0.5, sp5.ty + 0.5);
+mir.cooldown = 5000; // 闭火隔离“开火现形”
+const mirFoe = world.addUnit('enemy', 'tyrant', sp5.tx + 4.5, sp5.ty + 0.5);
+mirFoe.order = { type: 'idle' }; mirFoe.path = null;
+for (let i = 0; i < 100; i++) world.tick();
+check('幻影坦克伪装：远处敌人无法索敌', mirFoe.targetId !== mir.id, `target=${mirFoe.targetId}`);
+world.killEntity(mir); world.killEntity(mirFoe);
+
+// 13.6 基洛夫飞艇：飞行接近并投弹
+const sp6 = freeSpot2x2(46, 64);
+const kTgt = world.addBuilding('player', 'power', sp6.tx, sp6.ty);
+const kirov = world.addUnit('enemy', 'kirov', sp6.tx + 0.5, sp6.ty + 5);
+kirov.order = { type: 'attack', targetId: kTgt.id };
+kirov.targetId = kTgt.id;
+const kthp = kTgt.hp;
+for (let i = 0; i < 500 && kTgt.hp >= kthp; i++) world.tick();
+check('基洛夫飞艇飞行投弹伤害建筑', kTgt.hp < kthp, `hp ${kthp} -> ${Math.round(kTgt.hp)}`);
+
+// 13.7 天启坦克双联导弹可对空
+const sp7 = freeSpot2x2(54, 64);
+const apoc = world.addUnit('enemy', 'apoc', sp7.tx + 0.5, sp7.ty + 0.5);
+apoc.order = { type: 'idle' }; apoc.path = null;
+const drone = world.addUnit('player', 'ghost', sp7.tx + 2.5, sp7.ty + 2.5);
+drone.order = { type: 'idle' }; drone.path = null;
+for (let i = 0; i < 180; i++) world.tick();
+check('天启坦克双联导弹可对空', drone.hp < drone.maxHp, `ghost hp ${Math.round(drone.hp)}/${drone.maxHp}`);
+
 console.log(`\n${failures === 0 ? '全部通过 ✔' : failures + ' 项失败 ✘'}`);
 process.exit(failures === 0 ? 0 : 1);

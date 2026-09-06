@@ -4,7 +4,7 @@ import { UNITS, UPGRADES, DIFFS } from '../config.js';
 
 const BUILD_ORDER = [
   'power', 'refinery', 'barracks', 'factory', 'repair', 'power',
-  'radar', 'laser', 'sam', 'npower', 'railgun', 'power', 'laser',
+  'radar', 'laser', 'sam', 'npower', 'railgun', 'tesla', 'power', 'laser',
 ];
 
 export class Commander {
@@ -59,7 +59,7 @@ export class Commander {
     while (this.bi < BUILD_ORDER.length) {
       const t = BUILD_ORDER[this.bi++];
       // 防御塔最多各两座，多了跳过
-      if ((t === 'laser' || t === 'sam' || t === 'railgun') && owned.filter(x => x === t).length >= 2) continue;
+      if ((t === 'laser' || t === 'sam' || t === 'railgun' || t === 'tesla') && owned.filter(x => x === t).length >= 2) continue;
       if (t === 'refinery' && owned.includes('refinery')) continue;
       if (t === 'barracks' && owned.includes('barracks')) continue;
       if (t === 'factory' && owned.includes('factory')) continue;
@@ -106,13 +106,17 @@ export class Commander {
         const playerAir = w.unitsOf('player').some(u => UNITS[u.type]?.fly);
         const hasRadar = buildings.some(b => b.type === 'radar');
         const hasNPower = buildings.some(b => b.type === 'npower');
-        // 困难：更重的坦克海 + 雷达后补火箭炮；有核电站后掺泰坦机甲；玩家出空军：掺弹炮车
+        // 困难：重坦海 + 雷达后补火箭炮；核电站后掺阵营专属（天启/基洛夫）与泰坦机甲；玩家出空军：掺弹炮车
         let cycle = this.diff.incomeMul > 1.2
           ? ['tyrant', 'tyrant', 'tyrant', 'hunter', 'tyrant']
           : ['tyrant', 'tyrant', 'hunter', 'tyrant'];
         if (hasRadar) cycle = [...cycle, 'mlrs', 'mlrs'];
+        if (hasRadar && hasNPower) {
+          if (this.diff.incomeMul > 1.2) cycle = [...cycle, 'apoc', 'kirov', 'apoc'];
+          else cycle = [...cycle, 'apoc'];
+        }
         if (hasRadar && hasNPower && this.diff.incomeMul > 1.2) cycle = [...cycle, 'titan'];
-        if (playerAir) cycle = ['tyrant', 'hunter', 'hunter', 'tyrant'];
+        if (playerAir) cycle = ['tyrant', 'hunter', 'hunter', 'tyrant', 'apoc'];
         item = cycle[this.armyCounter++ % cycle.length];
       }
       w.issueCommand(s, { type: 'produce', item });

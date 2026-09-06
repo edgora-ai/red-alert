@@ -4,7 +4,7 @@ import { UNITS, BUILDINGS, UPGRADES, WEAPONS, buildTicks, DIFFS } from '../confi
 import { SIDE_COLORS } from './renderer.js';
 
 const TABS = {
-  buildings: () => BUILDINGS.yard.produces,
+  buildings: () => BUILDINGS.yard.produces.filter(t => !BUILDINGS[t].side || BUILDINGS[t].side === 'player'),
   infantry: () => BUILDINGS.barracks.produces,
   vehicles: () => BUILDINGS.factory.produces.filter(t => UNITS[t].side !== 'enemy'),
   tech: () => Object.keys(UPGRADES),
@@ -126,7 +126,13 @@ export class UI {
       rows.push('研发后全军永久生效');
     } else if (UNITS[item]) {
       rows.push(`耐久 ${def.hp} · ${ARMOR_NAMES[def.armor] || def.armor} · 速度 ${def.speed}`);
-      if (w) rows.push(`火力 ${w.dmg}${w.burst ? `×${w.burst} 齐射` : ''} / ${(w.cooldown / 30).toFixed(0)}s · 射程 ${w.range}${w.canAir ? ' · 可对空' : ''}`);
+      if (w) {
+        let fire = `火力 ${w.dmg}${w.burst ? `×${w.burst} 齐射` : ''} / ${(w.cooldown / 30).toFixed(0)}s · 射程 ${w.range}${w.canAir ? ' · 可对空' : ''}`;
+        if (w.chain) fire += ` · 链式跳跃×${w.chain + 1}`;
+        if (w.stun) fire += ' · 麻痹';
+        rows.push(fire);
+      }
+      if (def.stealth) rows.push('光学迷彩：静止时隐形/伪装，开火现形');
       if (def.capture) rows.push('可占领受损敌方建筑（<50%）');
       if (def.harvester) rows.push('自动采矿运输');
       if (def.deploys) rows.push('按 D 展开为建造厂');

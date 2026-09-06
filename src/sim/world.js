@@ -175,11 +175,12 @@ export class World {
           this.bgrid[this.idx(e.tx + dx, e.ty + dy)] = -1;
     }
     this.entities.delete(e.id);
-    const r = e.kind === 'building' ? Math.max(e.w, e.h) * 0.8 : 0.6;
-    this.fx.push({ type: 'boom', x: e.x, y: e.y, r, ttl: 16, max: 16 });
-    this.events.push({ type: 'boom', big: e.kind === 'building', x: e.x, y: e.y });
-    // 地面载具留下燃烧残骸（渲染层消费）
-    if (e.kind === 'unit' && !UNITS[e.type]?.fly && !UNITS[e.type]?.inf) {
+    const fly = e.kind === 'unit' && UNITS[e.type]?.fly;
+    const r = e.kind === 'building' ? Math.max(e.w, e.h) * 0.8 : fly ? 1.1 : 0.6;
+    this.fx.push({ type: 'boom', x: e.x, y: e.y, r, ttl: 16, max: 16, alt: fly ? (e.alt ?? 2.2) : 0 });
+    this.events.push({ type: 'boom', big: e.kind === 'building' || fly, x: e.x, y: e.y });
+    // 地面载具留下燃烧残骸；空中单位（基洛夫）坠落爆燃（渲染层消费 alt）
+    if (e.kind === 'unit' && !fly && !UNITS[e.type]?.inf) {
       this.fx.push({
         type: 'wreck', x: e.x, y: e.y, ttl: 600, max: 600,
         heavy: e.type === 'cheetah' || e.type === 'tyrant' || e.type === 'titan',
@@ -705,7 +706,12 @@ export class World {
     const total = buildTicks(def);
     // 建筑完成但等待放置槽空闲时，停在 100%
     if (BUILDINGS[item] && this.sides[b.side].placing && b.progress >= total) return;
-    const rate = this.power[b.side]?.low ? 0.5 : 1;
+    // 多兵营/多战车工厂并行加速：+35%/座（上限 170%），经济扩张的建造深度
+    let rate = this.power[b.side]?.low ? 0.5 : 1;
+    if (b.type === 'barracks' || b.type === 'factory') {
+      const same = this.buildingsOf(b.side).filter(x => x.type === b.type).length;
+      rate *= Math.min(ECON.prodSpeed.cap, 1 + (same - 1) * ECON.prodSpeed.bonus);
+    }
     b.progress += rate;
     if (b.progress < total) return;
 
@@ -807,6 +813,8 @@ export class World {
       if (e.flash > 0) e.flash--;
       if (e.recoil > 0) e.recoil--; // 炮管后坐恢复（渲染用）
       if (e.kind === 'unit') {
+        // 磁暴瘫痪：原地僵直，不能移动不能开火（渲染层冒电火花）
+        if (e.stun > 0) { e.stun--; continue; }
         this.updateMovement(e);
         if (e.order?.type === 'harvest') updateHarvester(this, e);
         else if (e.order?.type === 'capture') this.updateCapture(e);

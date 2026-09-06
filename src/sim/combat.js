@@ -162,22 +162,55 @@ function fireOne(world, e, w, target, off = 0) {
     world.fx.push({
       type: energy ? 'beam' : 'tracer',
       x1: e.x, y1: e.y, x2: target.x, y2: target.y,
-      color: energy ? (e.side === 'player' ? '#7df9ff' : '#ffb347') : '#ffe9a8',
+      alt1: e.kind === 'building' ? 1.0 : undefined, // 磁暴线圈从塔顶出弧
+      color: w.color ?? (energy ? (e.side === 'player' ? '#7df9ff' : '#ffb347') : '#ffe9a8'),
       ttl: energy ? 9 : 4, max: energy ? 9 : 4,
     });
+    if (w.stun && target.kind === 'unit') target.stun = w.stun; // 磁暴麻痹
     applyDamage(world, target, dmg, w.dtype, e);
+    if (w.chain) chainArcs(world, e, w, target, dmg); // 链式跳跃（磁暴电弧/光棱折射）
   } else {
     world.projectiles.push({
       x: e.x, y: e.y + off, targetId: target.id, tx: target.x, ty: target.y,
       speed: w.projSpeed, weapon: e.weapon, side: e.side, srcId: e.id,
       dmgMul: (e.dmgMul || 1) * (ups?.fire || 1),
       homing: w.dtype === 'missile',
+      // 空投弹道（基洛夫）：从飞行高度抛下，渲染层按进度插值高度
+      alt0: world.unitDef(e)?.fly ? 2.2 : 0.35,
+      totalDist: Math.max(0.001, dist(e.x, e.y, target.x, target.y)),
     });
   }
 }
 
-export function updateProjectiles(world) {
-  const list = world.projectiles;
+// 链式跳跃伤害（磁暴线圈电弧 / 光棱坦克折射束）：
+// 从主目标向 3.6 格内最近的敌方地面单位逐级跳，伤害按 chainFall 衰减
+function chainArcs(world, e, w, first, dmg) {
+  let from = first;
+  const hit = new Set([first.id]);
+  for (let i = 0; i < w.chain; i++) {
+    let best = null, bd = Infinity;
+    for (const t of world.entities.values()) {
+      if (t.dead || t.side === e.side || hit.has(t.id) || t.kind !== 'unit') continue;
+      const def = world.unitDef(t);
+      if (def?.fly) continue; // 电弧/折射贴地跳跃，不打空中
+      if (def?.stealth && !(t.cloak > 0) && dist(from.x, from.y, t.x, t.y) > ECON.cloak.near) continue;
+      const d = dist(from.x, from.y, t.x, t.y);
+      if (d < 3.6 && d < bd) { bd = d; best = t; }
+    }
+    if (!best) break;
+    hit.add(best.id);
+    world.fx.push({
+      type: 'beam', x1: from.x, y1: from.y, x2: best.x, y2: best.y,
+      color: w.color ?? '#9fd8ff', ttl: 8, max: 8,
+    });
+    const d2 = dmg * Math.pow(w.chainFall ?? 0.6, i + 1);
+    if (w.stun) best.stun = w.stun; // 链式磁暴同样带麻痹
+    applyDamage(world, best, d2, w.dtype, e);
+    from = best;
+  }
+}
+
+export function updateProjectiles(world) {  const list = world.projectiles;
   for (let i = list.length - 1; i >= 0; i--) {
     const p = list[i];
     const w = WEAPONS[p.weapon];

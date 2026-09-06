@@ -227,6 +227,25 @@ export class Sound {
         this.noise({ dur: 0.06, type: 'bandpass', freq: 5200, gain: 0.35, out, delay: 0.36 });
         this.thump(85, 0.32, 0.85, out, 0.34);
         break;
+      case 'teslaW': // 磁暴电弧：充能爬升 + 电流爆裂 + 低频震荡
+        this.tone({ freq: 70, dur: 0.28, type: 'sawtooth', gain: 0.2, slideTo: 700, out, lp: 2600 });
+        this.noise({ dur: 0.06, type: 'highpass', freq: 3200, gain: 0.5, out, delay: 0.26 });
+        this.noise({ dur: 0.2, type: 'bandpass', freq: 1800 + Math.random() * 800, gain: 0.35, out, delay: 0.28 });
+        this.thump(80, 0.25, 0.7, out, 0.27);
+        break;
+      case 'prismW': case 'mirageW': // 光棱/幻影光束：高频切裂 + 下滑光鸣
+        this.zap(1900, 320, 0.16, 0.35, out);
+        this.tone({ freq: 2700, dur: 0.2, type: 'sine', gain: 0.12, slideTo: 800, out });
+        break;
+      case 'kirovW': // 重型航弹投放：挂架释放闷响 + 长下坠风声
+        this.noise({ dur: 0.09, type: 'lowpass', freq: 600, gain: 0.5, out });
+        this.whoosh(0.55, 380, 1600, 0.4, out, 0.05);
+        break;
+      case 'apocW': // 天启双联导弹：粗重出膛 + 双联扫频
+        this.noise({ dur: 0.05, type: 'lowpass', freq: 1000, gain: 0.5, out });
+        this.whoosh(0.4, 480, 2400, 0.5, out);
+        this.thump(90, 0.22, 0.6, out, 0.02);
+        break;
       default:
         this.noise({ dur: 0.12, type: 'lowpass', freq: 700, gain: 0.5, out });
     }

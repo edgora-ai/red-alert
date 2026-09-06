@@ -299,6 +299,122 @@ function mcv(side) {
   return g;
 }
 
+// —— 超级进化：阵营专属兵种 ——
+
+// 基洛夫重型飞艇：巨型气囊 + 三鳍尾 + 武装吊舱 + 双引擎旋转螺旋桨 + 挂弹架
+function kirov(side) {
+  const h = HULL[side], a = ACCENT[side];
+  const g = new THREE.Group();
+  const env = sph(0.62, 0x6a7078, 0, 0, 0, { seg: 14 }); // 灰色巨型气囊
+  env.scale.set(2.0, 0.78, 0.82);
+  g.add(env);
+  const stripe = box(1.6, 0.06, 0.02, a, 0, 0.1, 0.51, { em: a, emi: 0.4 }); // 阵营识别条纹
+  stripe.rotation.z = 0.05;
+  g.add(stripe);
+  // 尾鳍：垂尾 + 左右平尾
+  g.add(box(0.03, 0.4, 0.3, 0x555b63, -1.08, 0.34, 0));
+  for (const s of [-1, 1]) g.add(box(0.34, 0.03, 0.26, 0x555b63, -1.08, 0.14, s * 0.14));
+  // 武装吊舱（阵营涂装）+ 舷窗
+  g.add(box(0.56, 0.16, 0.2, h, 0.08, -0.52, 0));
+  g.add(box(0.22, 0.05, 0.14, 0x1a1e24, 0.3, -0.54, 0));
+  // 双引擎短舱 + 旋转螺旋桨模糊盘
+  const rotors = [];
+  for (const s of [-1, 1]) {
+    g.add(cyl(0.05, 0.07, 0.3, 0x3c444e, -0.62, -0.22, s * 0.44, { rz: -Math.PI / 2 }));
+    const prop = cyl(0.3, 0.3, 0.012, 0x181c22, -0.8, -0.22, s * 0.44, { rz: -Math.PI / 2, alpha: 0.45 });
+    rotors.push(prop);
+    g.add(prop);
+  }
+  g.userData.rotors = rotors;
+  // 两侧挂弹架
+  for (const s of [-1, 1]) {
+    g.add(box(0.05, 0.14, 0.03, 0x3c444e, 0.16, -0.63, s * 0.22));
+    g.add(cyl(0.045, 0.045, 0.16, 0x2c343e, 0.16, -0.74, s * 0.22, { rz: -Math.PI / 2 }));
+  }
+  return g;
+}
+
+// 天启突击坦克：宽体双履带 + 4×爆反 + 四联炮管炮塔 + 肩部防空导弹巢
+function apoc(side) {
+  const h = HULL[side], a = ACCENT[side];
+  const g = new THREE.Group();
+  for (const s of [-1, 1]) {
+    g.add(trackAssembly(1.0, 0, s * 0.34));
+    g.add(box(0.9, 0.12, 0.04, h, -0.02, 0.26, s * 0.45));
+  }
+  g.add(box(0.95, 0.2, 0.56, h, 0, 0.28, 0));
+  const glacis = box(0.22, 0.18, 0.5, h, 0.48, 0.27, 0);
+  glacis.rotation.z = -0.5;
+  g.add(glacis);
+  for (const [bx, bz] of [[0.38, -0.16], [0.38, 0.16], [0.56, 0]]) {
+    const era = box(0.13, 0.04, 0.13, 0x2c343e, bx, 0.38, bz);
+    era.rotation.z = -0.5;
+    g.add(era);
+  }
+  const tur = new THREE.Group();
+  tur.position.set(-0.06, 0.44, 0);
+  tur.add(box(0.5, 0.16, 0.44, h, 0, 0.02, 0));
+  tur.add(box(0.26, 0.04, 0.28, a, -0.08, 0.12, 0, { em: a, emi: 0.3 }));
+  const barrels = [];
+  for (const [bx, bz] of [[0.24, -0.13], [0.24, 0.13], [0.34, -0.05], [0.34, 0.05]]) {
+    const gun = barrel(0.6, 0.026, bx, 0.05, bz);
+    barrels.push(gun);
+    tur.add(gun);
+  }
+  tur.userData.barrels = barrels;
+  tur.add(box(0.2, 0.1, 0.3, 0x3c444e, -0.2, 0.16, 0)); // 肩部防空导弹巢
+  tur.add(rws(-0.18, 0.14, 0.12));
+  tur.add(antenna(-0.28, 0.08, -0.16, 0.3));
+  g.add(tur);
+  g.userData.turret = tur;
+  return g;
+}
+
+// 光棱坦克：轻型底盘 + 晶体折射阵列（中央大晶 + 双侧小晶）+ 聚焦导轨
+function prism(side) {
+  const h = HULL[side];
+  const g = new THREE.Group();
+  for (const s of [-1, 1]) g.add(trackAssembly(0.7, 0, s * 0.24));
+  g.add(box(0.66, 0.14, 0.4, h, 0, 0.22, 0));
+  const tur = new THREE.Group();
+  tur.position.set(-0.02, 0.32, 0);
+  tur.add(cyl(0.16, 0.2, 0.09, 0x2c343e, 0, 0, 0));
+  const c1 = oct(0.15, 0xbfff9f, 0.06, 0.2, 0, { em: 0xbfff9f, emi: 1.8 });
+  const c2 = oct(0.09, 0xd6ffb8, 0.06, 0.2, 0.16, { em: 0xbfff9f, emi: 1.4 });
+  const c3 = oct(0.09, 0xd6ffb8, 0.06, 0.2, -0.16, { em: 0xbfff9f, emi: 1.4 });
+  tur.add(c1, c2, c3);
+  tur.add(box(0.3, 0.02, 0.03, 0xbfff9f, 0.24, 0.16, 0, { em: 0xbfff9f, emi: 1 }));
+  g.add(tur);
+  g.userData.turret = tur;
+  g.userData.prism = c1;
+  return g;
+}
+
+// 幻影坦克：轻型光束坦克 + 树形伪装形态（renderer 按迷彩状态切换两个子组可见性）
+function mirage(side) {
+  const h = HULL[side], a = ACCENT[side];
+  const g = new THREE.Group();
+  const tank = new THREE.Group();
+  for (const s of [-1, 1]) tank.add(trackAssembly(0.66, 0, s * 0.22));
+  tank.add(box(0.6, 0.13, 0.36, h, 0, 0.2, 0));
+  const tur = new THREE.Group();
+  tur.position.set(0, 0.3, 0);
+  tur.add(box(0.3, 0.1, 0.26, h, 0, 0.01, 0));
+  tur.add(cyl(0.035, 0.035, 0.4, 0xdde2e8, 0.2, 0.05, 0, { rz: -Math.PI / 2 }));
+  tur.add(sph(0.05, 0xc9f2ff, 0.4, 0.05, 0, { em: 0xc9f2ff, emi: 1.6 }));
+  tur.add(box(0.14, 0.03, 0.14, a, -0.1, 0.08, 0, { em: a, emi: 0.35 }));
+  tank.add(tur);
+  tank.userData.turret = tur;
+  g.add(tank);
+  const tree = makeTree();
+  tree.scale.setScalar(1.25);
+  tree.position.y = 0.05;
+  g.add(tree);
+  g.userData.tankGroup = tank;
+  g.userData.treeGroup = tree;
+  return g;
+}
+
 // 泰坦重型机甲：双足行走机构（髋/膝关节摆动）+ 重装甲躯干 + 双联电磁轨道炮 + 发光反应核心
 function titan(side) {
   const h = HULL[side], a = ACCENT[side];
@@ -525,6 +641,23 @@ const BUILDING_BUILDERS = {
     g.userData.bob = { obj: head, y: 0 };
     return g;
   },
+  // 磁暴线圈（红军专属）：铜柱 + 三层磁暴环 + 悬浮充能球（bob 呼吸）
+  tesla(side) {
+    const g = slab(1, 1, side);
+    g.add(cyl(0.3, 0.38, 0.16, 0xffffff, 0, 0.12, 0, { map: tex(skin('metal'), 1, 0.5) }));
+    g.add(cyl(0.09, 0.14, 0.6, 0x8a4a3a, 0, 0.48, 0));             // 铜柱
+    for (let i = 0; i < 3; i++) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.2 - i * 0.045, 0.028, 8, 18), mat(0xc8a03c, { metal: 0.6, rough: 0.35 }));
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = 0.34 + i * 0.17;
+      g.add(ring);
+    }
+    const orb = sph(0.13, 0x8fd4ff, 0, 0.95, 0, { em: 0x8fd4ff, emi: 2.2 }); // 充能球
+    g.add(orb);
+    g.userData.bob = { obj: orb, y: 0.95 };
+    g.userData.orb = orb;
+    return g;
+  },
   // 中立补给站：沙金涂装岗楼 + 库房 + 补给箱（工程师占领后持续产出资金）
   outpost(side) {
     const g = slab(2, 2, side);
@@ -665,10 +798,10 @@ export function makeWreck(heavy) {
 
 // ================= 入口 =================
 
-const UNIT_BUILDERS = { cheetah, tyrant, hunter, mlrs, longsword, aurora, reaper, harvester, mcv, ghost, titan };
+const UNIT_BUILDERS = { cheetah, tyrant, hunter, mlrs, longsword, aurora, reaper, harvester, mcv, ghost, titan, kirov, apoc, prism, mirage };
 
 // 飞行单位悬停高度
-const FLY_Y = { ghost: 1.05, reaper: 1.45 };
+const FLY_Y = { ghost: 1.05, reaper: 1.45, kirov: 2.2 };
 const INFANTRY = new Set(['rifle', 'rocket', 'sniper', 'engineer']);
 
 export function buildUnitModel(type, side) {

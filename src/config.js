@@ -34,6 +34,12 @@ export const WEAPONS = {
   reaperW:   { name: '空地导弹',     dmg: 75,  dtype: 'missile', range: 7,   cooldown: 50,  projSpeed: 0.5,  canAir: false, splash: 0.4 },
   sniperW:   { name: '反器材狙击枪', dmg: 70,  dtype: 'bullet',  range: 8.5, cooldown: 55,  projSpeed: 0,    canAir: false, splash: 0 },
   titanW:    { name: '双联电磁轨道炮', dmg: 115, dtype: 'shell',   range: 8.5, cooldown: 85,  projSpeed: 1.1,  canAir: false, splash: 0.5, burst: 2, burstCd: 9 },
+  // —— 超级进化：阵营专属武器（chain=链式跳跃目标数，chainFall=衰减系数，stun=瘫痪 tick）——
+  teslaW:    { name: '磁暴电弧',     dmg: 85,  dtype: 'energy',  range: 6.5, cooldown: 75,  projSpeed: 0,    canAir: false, splash: 0, chain: 2, chainFall: 0.6, stun: 45, color: '#8fd4ff' },
+  prismW:    { name: '光棱折射束',   dmg: 62,  dtype: 'energy',  range: 7.5, cooldown: 55,  projSpeed: 0,    canAir: false, splash: 0, chain: 2, chainFall: 0.75, color: '#bfff9f' },
+  mirageW:   { name: '光束狙击炮',   dmg: 85,  dtype: 'energy',  range: 6.5, cooldown: 55,  projSpeed: 0,    canAir: false, splash: 0, color: '#c9f2ff' },
+  kirovW:    { name: '重型航空炸弹', dmg: 80,  dtype: 'shell',   range: 4.5, cooldown: 45,  projSpeed: 0.45, canAir: false, splash: 1.1 },
+  apocW:     { name: '双联反坦克导弹', dmg: 52, dtype: 'missile', range: 6,   cooldown: 55,  projSpeed: 0.55, canAir: true,  splash: 0.35, burst: 2, burstCd: 8 },
 };
 
 // 单位：speed 瓦片/s，sight 瓦片，buildTime 秒
@@ -54,21 +60,27 @@ export const UNITS = {
   ghost:    { name: '幽灵武装无人机', cost: 900,  buildTime: 18, hp: 230, armor: 'air',   speed: 3.2, sight: 8, weapon: 'pods', producer: 'factory', fly: true, prereq: ['radar'], side: 'player' },
   mcv:      { name: '基地车',         cost: 2000, buildTime: 40, hp: 650, armor: 'heavy', speed: 1.5, sight: 5, deploys: 'yard', producer: 'factory' },
   titan:    { name: '泰坦重型机甲',   cost: 3200, buildTime: 45, hp: 950, armor: 'heavy', speed: 1.5, sight: 8, weapon: 'titanW', producer: 'factory', prereq: ['radar', 'npower'] },
+  // —— 超级进化：阵营专属兵种 ——
+  prism:    { name: '光棱坦克',       cost: 1800, buildTime: 26, hp: 360, armor: 'heavy', speed: 1.7, sight: 8, weapon: 'prismW', producer: 'factory', prereq: ['radar'], side: 'player' },
+  mirage:   { name: '幻影坦克',       cost: 1600, buildTime: 24, hp: 380, armor: 'heavy', speed: 1.9, sight: 7, weapon: 'mirageW', producer: 'factory', prereq: ['radar'], side: 'player', stealth: true },
+  kirov:    { name: '基洛夫重型飞艇', cost: 2400, buildTime: 30, hp: 1400, armor: 'air',  speed: 0.9, sight: 7, weapon: 'kirovW', producer: 'factory', prereq: ['radar', 'npower'], fly: true, side: 'enemy' },
+  apoc:     { name: '天启突击坦克',   cost: 2800, buildTime: 40, hp: 1150, armor: 'heavy', speed: 1.1, sight: 6.5, weapon: 'apocW', producer: 'factory', prereq: ['radar', 'npower'], side: 'enemy' },
 };
 
 // 建筑：power 正=供电 负=耗电；produces 指可生产的单位/建筑列表
 export const BUILDINGS = {
-  yard:     { name: '建造厂',       cost: 2000, buildTime: 40, w: 3, h: 3, hp: 1200, power: -20, sight: 6, produces: ['power', 'refinery', 'barracks', 'factory', 'radar', 'npower', 'laser', 'sam', 'railgun', 'repair'] },
+  yard:     { name: '建造厂',       cost: 2000, buildTime: 40, w: 3, h: 3, hp: 1200, power: -20, sight: 6, produces: ['power', 'refinery', 'barracks', 'factory', 'radar', 'npower', 'laser', 'sam', 'railgun', 'repair', 'tesla'] },
   power:    { name: '燃气电厂',     cost: 600,  buildTime: 12, w: 2, h: 2, hp: 600,  power: 100,  sight: 4 },
   npower:   { name: '核电站',       cost: 1200, buildTime: 24, w: 3, h: 3, hp: 750,  power: 250,  sight: 4, prereq: ['radar'] },
   refinery: { name: '矿石精炼厂',   cost: 1800, buildTime: 30, w: 3, h: 2, hp: 1000, power: -40,  sight: 5, grants: 'harvester', refinery: true },
   barracks: { name: '兵营',         cost: 500,  buildTime: 10, w: 2, h: 2, hp: 750,  power: -20,  sight: 5, produces: ['rifle', 'rocket', 'engineer'] },
-  factory:  { name: '战车工厂',     cost: 1800, buildTime: 32, w: 3, h: 3, hp: 1100, power: -30,  sight: 5, prereq: ['barracks'], produces: ['harvester', 'cheetah', 'tyrant', 'hunter', 'longsword', 'aurora', 'ghost', 'mcv', 'titan'] },
+  factory:  { name: '战车工厂',     cost: 1800, buildTime: 32, w: 3, h: 3, hp: 1100, power: -30,  sight: 5, prereq: ['barracks'], produces: ['harvester', 'cheetah', 'tyrant', 'hunter', 'longsword', 'aurora', 'ghost', 'mcv', 'titan', 'prism', 'mirage', 'kirov', 'apoc'] },
   radar:    { name: '雷达站',       cost: 1200, buildTime: 20, w: 2, h: 2, hp: 850,  power: -50,  sight: 10, prereq: ['factory'], produces: ['ap', 'composite', 'engine', 'mining', 'super'] },
   laser:    { name: '激光防御塔',   cost: 800,  buildTime: 14, w: 1, h: 1, hp: 550,  power: -30,  sight: 7, weapon: 'laserT', defense: true },
   sam:      { name: '防空导弹阵地', cost: 700,  buildTime: 12, w: 1, h: 1, hp: 500,  power: -20,  sight: 9, weapon: 'samW', defense: true },
   railgun:  { name: '电磁轨道炮塔', cost: 1400, buildTime: 24, w: 1, h: 1, hp: 650,  power: -60,  sight: 8, weapon: 'railW', defense: true, prereq: ['radar'] },
   repair:   { name: '无人修理厂',   cost: 900,  buildTime: 16, w: 2, h: 2, hp: 800,  power: -25,  sight: 5, prereq: ['factory'], repair: true },
+  tesla:    { name: '磁暴线圈',     cost: 1100, buildTime: 20, w: 1, h: 1, hp: 700,  power: -60,  sight: 7.5, weapon: 'teslaW', defense: true, prereq: ['radar'], side: 'enemy' },
   outpost:  { name: '中立补给站',   cost: 0,    buildTime: 0,  w: 2, h: 2, hp: 1100, power: 0,    sight: 6, neutral: true },
 };
 
@@ -91,6 +103,7 @@ export const ECON = {
   repair: { radius: 3.2, rate: 10, costPerHp: 0.5 },           // 修理厂：10 HP/s，$0.5/HP
   neutral: { period: 150, income: 100 },                       // 中立补给站：每 5s +$100
   cloak: { reveal: 90, near: 2.6 },                            // 狙击手迷彩：开火后现形 3s，近身 2.6 格内现形
+  prodSpeed: { bonus: 0.35, cap: 1.7 },                        // 多兵营/多战车工厂并行加速：+35%/座，上限 170%
 };
 
 // 老兵等级：击杀积攒经验，晋升提升火力与耐久（chevrons 渲染见 renderer）

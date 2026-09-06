@@ -15,10 +15,10 @@ const TERRAIN = {
   rock: '#55565f',
   water: '#10283e',
 };
-const TOP_Y = { yard: 1.5, power: 1.2, npower: 1.35, refinery: 1.1, barracks: 1.0, factory: 1.2, radar: 1.4, laser: 1.0, sam: 1.0, railgun: 1.0, repair: 1.0, outpost: 1.4 };
-const FLY_Y = { ghost: 1.05, reaper: 1.45 }; // 与 models.js 保持一致
+const TOP_Y = { yard: 1.5, power: 1.2, npower: 1.35, refinery: 1.1, barracks: 1.0, factory: 1.2, radar: 1.4, laser: 1.0, sam: 1.0, railgun: 1.0, repair: 1.0, outpost: 1.4, tesla: 1.1 };
+const FLY_Y = { ghost: 1.05, reaper: 1.45, kirov: 2.2 }; // 与 models.js 保持一致
 // 履带/轮式载具行驶时悬挂晃动
-const TRACKED = new Set(['cheetah', 'tyrant', 'hunter', 'mlrs', 'longsword', 'harvester', 'mcv']);
+const TRACKED = new Set(['cheetah', 'tyrant', 'hunter', 'mlrs', 'longsword', 'harvester', 'mcv', 'apoc', 'prism', 'mirage']);
 
 // 确定性哈希（地形纹理需要可复现的噪声）
 function hash2(x, y, k = 0) {
@@ -465,7 +465,7 @@ export class Renderer {
       let rec = this.meshMap.get(e.id);
       if (!rec) {
         const group = e.kind === 'unit' ? buildUnitModel(e.type, e.side) : buildBuildingModel(e.type, e.side);
-        const unitTop = { ghost: 1.6, reaper: 1.95, titan: 1.4 }[e.type] ?? 0.65;
+        const unitTop = { ghost: 1.6, reaper: 1.95, titan: 1.4, kirov: 2.8, apoc: 0.95, prism: 0.8 }[e.type] ?? 0.65;
         rec = {
           group, kind: e.kind,
           topY: e.kind === 'building' ? (TOP_Y[e.type] ?? 1) : unitTop,
@@ -517,24 +517,38 @@ export class Renderer {
           rec.group.rotation.x *= 0.86;
         }
       }
-      // 光学迷彩：隐形时整体半透明 + 仅剩轮廓感
-      if (e.kind === 'unit' && e.type === 'sniper') {
+      // 光学迷彩：狙击手半透明；幻影坦克整体变身（静止伪装成一棵树，开火现形）
+      if (e.kind === 'unit' && (e.type === 'sniper' || e.type === 'mirage')) {
         const cloaked = !(e.cloak > 0);
         if (cloaked !== rec.cloaked) {
           rec.cloaked = cloaked;
-          rec.group.traverse(m => {
-            if (!m.isMesh) return;
-            if (cloaked) {
-              if (m.userData._o === undefined) { m.userData._o = m.material.opacity; m.userData._t = m.material.transparent; }
-              m.material.transparent = true;
-              m.material.opacity = 0.38;
-            } else if (m.userData._o !== undefined) {
-              m.material.opacity = m.userData._o;
-              m.material.transparent = m.userData._t;
-              m.userData._o = undefined;
-            }
-          });
+          if (e.type === 'mirage' && ud.tankGroup && ud.treeGroup) {
+            ud.treeGroup.visible = cloaked;
+            ud.tankGroup.visible = !cloaked;
+          } else {
+            rec.group.traverse(m => {
+              if (!m.isMesh) return;
+              if (cloaked) {
+                if (m.userData._o === undefined) { m.userData._o = m.material.opacity; m.userData._t = m.material.transparent; }
+                m.material.transparent = true;
+                m.material.opacity = 0.38;
+              } else if (m.userData._o !== undefined) {
+                m.material.opacity = m.userData._o;
+                m.material.transparent = m.userData._t;
+                m.userData._o = undefined;
+              }
+            });
+          }
         }
+      }
+      // 磁暴瘫痪：单位僵直冒电火花
+      if (e.kind === 'unit' && e.stun > 0 && (rec.stunT = (rec.stunT ?? 0) - dt) <= 0) {
+        rec.stunT = 0.09;
+        this.particles.spawn({
+          x: e.x + (Math.random() - 0.5) * 0.45, y: 0.35 + Math.random() * 0.6, z: e.y + (Math.random() - 0.5) * 0.45,
+          vx: (Math.random() - 0.5) * 1.2, vy: -0.3 - Math.random() * 0.8, vz: (Math.random() - 0.5) * 1.2,
+          life: 0.2, size: 0.1, sizeEnd: 0.02, col0: 0x8fd4ff, col1: 0x2a6f9f, alpha: 0.95,
+        });
       }
 
       // 动画部件
@@ -713,7 +727,10 @@ export class Renderer {
       if (i < list.length) {
         const p = list[i];
         m.visible = true;
-        m.position.set(p.x, 0.35, p.y);
+        // 空投弹道：从飞行高度随进度降落到地面爆炸高度
+        const alt0 = p.alt0 ?? 0.35;
+        const k = Math.min(1, Math.max(0, 1 - Math.hypot(p.x - p.tx, p.y - p.ty) / (p.totalDist || 1)));
+        m.position.set(p.x, alt0 + (0.35 - alt0) * k, p.y);
       } else m.visible = false;
     });
 
@@ -745,10 +762,27 @@ export class Renderer {
       if (f.type === 'boom') {
         if (!f._done) {
           f._done = true;
+          const alt = f.alt || 0;
           this.particles.explosion(f.x, f.y, f.r);
+          if (alt) {
+            // 空中爆炸（基洛夫坠落）：高空爆燃火球 + 坠落燃烧残骸雨
+            this.particles.spawn({
+              x: f.x, y: alt, z: f.y, life: 0.5, size: f.r * 1.5, sizeEnd: f.r * 2.6,
+              col0: 0xfff6cc, col1: 0xff8a2a, alpha: 1,
+            });
+            for (let i = 0; i < 16; i++) {
+              const a = Math.random() * Math.PI * 2;
+              this.particles.spawn({
+                x: f.x + Math.cos(a) * 0.6, y: alt, z: f.y + Math.sin(a) * 0.6,
+                vx: Math.cos(a) * (1 + Math.random() * 2), vy: 0.3 + Math.random(), vz: Math.sin(a) * (1 + Math.random() * 2),
+                life: 0.9 + Math.random() * 0.7, size: 0.13, sizeEnd: 0.32,
+                col0: 0xffd070, col1: 0xb81e06, alpha: 0.95, grav: -6.5,
+              });
+            }
+          }
           const light = this.boomLights.find(l => !l.visible);
           if (light) {
-            light.position.set(f.x, 1.4, f.y);
+            light.position.set(f.x, Math.max(1.4, alt), f.y);
             light.intensity = 14 * f.r;
             light.distance = 10 + f.r * 5;
             light.visible = true;
@@ -859,7 +893,7 @@ export class Renderer {
           }
           f._mesh = g;
           this.scene.add(g);
-          const p1 = new THREE.Vector3(f.x1, 0.42, f.y1), p2 = new THREE.Vector3(f.x2, beam ? 0.5 : 0.35, f.y2);
+          const p1 = new THREE.Vector3(f.x1, f.alt1 ?? 0.42, f.y1), p2 = new THREE.Vector3(f.x2, beam ? 0.5 : 0.35, f.y2);
           for (const child of g.children) this.stretchBetween(child, p1, p2);
           this.particles.impact(f.x2, f.y2, col.getHex());
         }
