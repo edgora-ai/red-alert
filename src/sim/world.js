@@ -987,6 +987,7 @@ function groupOffsets(n) {
 // mapType：standard 标准 / river 河流对峙 / maze 绿洲迷宫 / plains 开放平原（见 config.MAP_TYPES）
 export function createSkirmish(seed = 20260801, mapType = 'standard') {
   const w = new World(seed);
+  w.mapType = mapType; // 渲染层按类型加建地形装饰（桥梁等）
   const rng = w.rng;
   const isRiver = mapType === 'river';
   const isMaze = mapType === 'maze';

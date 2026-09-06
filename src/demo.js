@@ -52,6 +52,7 @@ export function startDemo({ world, game, camera, ai }) {
   // 玩家一旦亲自操作（下达命令/框选/生产），演示立即停止接管玩家侧，变成玩家 vs AI
   function step() {
     if (w.winner || game.userPlay) return;
+    if (window.__dbg?.world !== w) return; // 重开换世界后旧 interval 空转守卫
 
     // 建筑：逐个生产并放置
     const placing = w.sides.player.placing;

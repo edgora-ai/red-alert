@@ -444,6 +444,34 @@ export class Renderer {
     inst(makeCrate(), props[0]);
     inst(makeBarrel(), props[1]);
     inst(makeSandbags(), props[2]);
+    if (w.mapType === 'river') this.buildBridges(w);
+  }
+
+  // ---------- 桥梁装饰（河流对峙图：桥面/栏杆/桥墩——让渡河口一目了然） ----------
+  buildBridges(w) {
+    const deckMat = new THREE.MeshStandardMaterial({ color: 0x8d887a, roughness: 0.9, metalness: 0.05 });
+    const railMat = new THREE.MeshStandardMaterial({ color: 0x5a6570, roughness: 0.6, metalness: 0.3 });
+    const pierMat = new THREE.MeshStandardMaterial({ color: 0x6f6a60, roughness: 0.95 });
+    for (const [x0, x1] of [[18, 22], [72, 76]]) {
+      const cx = (x0 + x1 + 1) / 2, wdt = x1 - x0 + 1;
+      const deck = new THREE.Mesh(new THREE.BoxGeometry(wdt, 0.08, 14), deckMat);
+      deck.position.set(cx, 0.02, 47.5);
+      deck.receiveShadow = true;
+      this.scene.add(deck);
+      this.terrainLayers.push(deck);
+      for (const s of [-1, 1]) {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(wdt, 0.14, 0.1), railMat);
+        rail.position.set(cx, 0.12, 47.5 + s * (wdt / 2 - 0.05));
+        this.scene.add(rail);
+        this.terrainLayers.push(rail);
+      }
+      for (const pz of [43.5, 47.5, 51.5]) {
+        const pier = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 0.2, 8), pierMat);
+        pier.position.set(cx, 0.02, pz);
+        this.scene.add(pier);
+        this.terrainLayers.push(pier);
+      }
+    }
   }
 
   // ---------- 放置幽灵 ----------
