@@ -421,10 +421,11 @@ export class Input {
           this.patrolMode = false;
           document.getElementById('settings')?.classList.add('hidden'); // 顺手收起设置面板
           break;
-        case ' ': { // 空格：跳到最近一次受击警报点
+        case ' ': { // 空格：循环跳转警报点（多线作战逐个巡检，再按下一个）
           const al = w.alerts.filter(a => a.side === 'player');
           if (al.length) {
-            const a = al[al.length - 1];
+            this.alertCycle = (this.alertCycle ?? -1) + 1;
+            const a = al[this.alertCycle % al.length];
             this.cam.x = a.x; this.cam.y = a.y;
             this.game.userCam = true;
           }

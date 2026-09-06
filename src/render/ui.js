@@ -72,7 +72,7 @@ export class UI {
     sfx.value = Math.round(sound.settings.sfx * 100);
     mus.value = Math.round(sound.settings.music * 100);
     mute.checked = sound.settings.muted;
-    sfx.oninput = () => sound.setSetting('sfx', sfx.value / 100);
+    sfx.oninput = () => { sound.setSetting('sfx', sfx.value / 100); sound.play({ type: 'select' }); }; // 拖动即试听
     mus.oninput = () => sound.setSetting('music', mus.value / 100);
     mute.onchange = () => sound.setSetting('muted', mute.checked);
 
