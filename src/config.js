@@ -33,7 +33,7 @@ export const WEAPONS = {
   mlrsW:     { name: '远程火箭弹',   dmg: 55,  dtype: 'missile', range: 10.5, minRange: 4, cooldown: 150, projSpeed: 0.32, canAir: false, splash: 1.2, burst: 6, burstCd: 5 },
   reaperW:   { name: '空地导弹',     dmg: 75,  dtype: 'missile', range: 7,   cooldown: 50,  projSpeed: 0.5,  canAir: false, splash: 0.4 },
   sniperW:   { name: '反器材狙击枪', dmg: 70,  dtype: 'bullet',  range: 8.5, cooldown: 55,  projSpeed: 0,    canAir: false, splash: 0 },
-  titanW:    { name: '双联电磁轨道炮', dmg: 115, dtype: 'shell',   range: 8.5, cooldown: 85,  projSpeed: 1.1,  canAir: false, splash: 0.5, burst: 2, burstCd: 9 },
+  titanW:    { name: '双联电磁轨道炮', dmg: 115, dtype: 'shell',   range: 8.5, cooldown: 85,  projSpeed: 1.1,  canAir: false, splash: 0.5, burst: 2, burstCd: 9, homing: true }, // 轮49：末端制导（打移动靶不再全脱靶）
   // —— 超级进化：阵营专属武器（chain=链式跳跃目标数，chainFall=衰减系数，stun=瘫痪 tick）——
   teslaW:    { name: '磁暴电弧',     dmg: 85,  dtype: 'energy',  range: 6.5, cooldown: 75,  projSpeed: 0,    canAir: false, splash: 0, chain: 2, chainFall: 0.6, stun: 45, color: '#8fd4ff', jag: true },
   prismW:    { name: '光棱折射束',   dmg: 62,  dtype: 'energy',  range: 7.5, cooldown: 55,  projSpeed: 0,    canAir: false, splash: 0, chain: 2, chainFall: 0.75, color: '#bfff9f' },

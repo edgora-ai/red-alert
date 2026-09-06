@@ -201,7 +201,9 @@ function fireOne(world, e, w, target, off = 0) {
       x: e.x, y: e.y + off, targetId: target.id, tx: target.x, ty: target.y,
       speed: w.projSpeed, weapon: e.weapon, side: e.side, srcId: e.id,
       dmgMul: (e.dmgMul || 1) * (ups?.fire || 1) * (ups?.wf?.[e.weapon] || 1),
-      homing: w.dtype === 'missile',
+      // 轮49：homing 与 dtype 解耦（此前只有导弹追踪；泰坦电磁炮弹末端制导，设定自洽，
+      // 否则高速炮打移动靶全脱靶，$3200 终极被 $2800 碾压）
+      homing: w.homing ?? w.dtype === 'missile',
       // 空投弹道（基洛夫）：从飞行高度抛下，渲染层按进度插值高度
       alt0: world.unitDef(e)?.fly ? 2.2 : 0.35,
       totalDist: Math.max(0.001, dist(e.x, e.y, target.x, target.y)),

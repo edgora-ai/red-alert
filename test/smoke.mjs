@@ -1219,6 +1219,25 @@ check('阵营门：玩家无法生产空天航母、AI 无法生产浮空炮艇'
     `saving=${aiL.savingUlt} queue=${facL.queue.length}`);
 }
 
+// —— 阶段37：轮49 泰坦末端制导（终极决战费效扶正） ——
+{
+  // 37.1 制导解耦：homing 字段优先于 dtype（shell 也能追踪）
+  const { WEAPONS: W49 } = await import('../src/config.js');
+  check('轮49泰坦末端制导（shell追踪，dtype解耦）', W49.titanW.homing === true && W49.titanW.dtype === 'shell',
+    `homing=${W49.titanW.homing} dtype=${W49.titanW.dtype}`);
+  // 37.2 决战：泰坦 vs 天启（理论 TTK 426<500，泰坦应胜；修复前天启剩1081HP碾压）
+  const wM = createSkirmish(525249);
+  for (let ty = 48; ty <= 52; ty++) for (let tx = 28; tx <= 38; tx++)
+    if (wM.inBounds(tx, ty)) { wM.tiles[wM.idx(tx, ty)] = TT.GRASS; wM.ore[wM.idx(tx, ty)] = 0; }
+  const apocM = wM.addUnit('enemy', 'apoc', 30.5, 50.5);
+  const titanM = wM.addUnit('player', 'titan', 36.5, 50.5);
+  apocM.order = { type: 'attack', targetId: titanM.id }; apocM.targetId = titanM.id;
+  titanM.order = { type: 'attack', targetId: apocM.id }; titanM.targetId = apocM.id;
+  for (let i = 0; i < 1500 && !apocM.dead && !titanM.dead; i++) wM.tick();
+  check('轮49终极决战（泰坦$3200胜天启$2800）', apocM.dead && !titanM.dead,
+    `apoc=${apocM.dead ? 'dead' : Math.round(apocM.hp)} titan=${titanM.dead ? 'dead' : Math.round(titanM.hp)}`);
+}
+
 // —— 阶段34：轮46 接线验证回归（选单互斥/读取隔离/DOM-CSS对齐） ——
 {
   const { readFileSync } = await import('node:fs');
