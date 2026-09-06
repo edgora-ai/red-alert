@@ -1180,6 +1180,45 @@ check('阵营门：玩家无法生产空天航母、AI 无法生产浮空炮艇'
     `launched=${wI.unitsOf('enemy').filter(u => u.order?.type === 'attackmove').length}`);
 }
 
+// —— 阶段36：轮48 困难AI科技线（预留/回退/攒钱三件套） ——
+{
+  const { Commander: C48 } = await import('../src/sim/ai.js');
+  // 36.1 科技预留：没雷达+钱<2500 → 工厂停下新载具（初始基地无工厂，显式补）
+  const wJ = createSkirmish(494948);
+  const aiJ = new C48(wJ, 'enemy', 'hard');
+  const eyJ = wJ.buildingsOf('enemy').find(b => b.type === 'yard');
+  wJ.addBuilding('enemy', 'factory', eyJ.tx + 4, eyJ.ty);
+  wJ.credits.enemy = 1000;
+  const facJ = wJ.buildingsOf('enemy').find(b => b.type === 'factory');
+  facJ.queue.length = 0;
+  const q0 = facJ.queue.length;
+  aiJ.produceArmy();
+  check('轮48科技预留（没雷达钱少工厂停摆存钱）', facJ.queue.length === q0, `queue=${facJ.queue.length}`);
+  // 36.2 下单失败回退：没钱下雷达 → bi 不消费
+  const wK = createSkirmish(505048);
+  const aiK = new C48(wK, 'enemy', 'hard');
+  aiK.bi = 6; // 指向 radar
+  wK.credits.enemy = 10;
+  const biBefore = aiK.bi;
+  aiK.macro();
+  check('轮48下单失败回退（没钱不消费序列）', aiK.bi === biBefore, `bi=${biBefore}->${aiK.bi}`);
+  // 36.3 终极攒钱：轮到 apoc 没钱 → savingUlt 置位、兵营同停（初始无工厂/雷达/核电，显式补）
+  const wL = createSkirmish(515148);
+  const aiL = new C48(wL, 'enemy', 'hard');
+  const eyL = wL.buildingsOf('enemy').find(b => b.type === 'yard');
+  wL.addBuilding('enemy', 'factory', eyL.tx + 4, eyL.ty);
+  wL.addBuilding('enemy', 'radar', 70, 20);
+  wL.addBuilding('enemy', 'npower', 70, 24);
+  wL.credits.enemy = 500;
+  const facL = wL.buildingsOf('enemy').find(b => b.type === 'factory');
+  facL.queue.length = 0;
+  // 把 armyCounter 指到 apoc（hard cycle: tyrant×3,hunter,tyrant,mlrs×2,apoc…→ index 7）
+  aiL.armyCounter = 7;
+  aiL.produceArmy();
+  check('轮48终极攒钱（apoc没钱全线存钱）', aiL.savingUlt === 'apoc' && facL.queue.length === 0,
+    `saving=${aiL.savingUlt} queue=${facL.queue.length}`);
+}
+
 // —— 阶段34：轮46 接线验证回归（选单互斥/读取隔离/DOM-CSS对齐） ——
 {
   const { readFileSync } = await import('node:fs');

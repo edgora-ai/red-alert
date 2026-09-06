@@ -109,14 +109,17 @@ export class Commander {
   }
 
   // 建筑序列 + 放置
+  // 轮48：produce 下单失败（没钱/缺前置）→ 序列回退，下次重试（否则没钱时 bi 照样++，
+  // 核电站这类关键项在穷时被消费掉，永久丢失）
   macro() {
     const w = this.world, s = this.side;
     const placing = w.sides[s].placing;
     if (placing) { this.tryPlace(placing); return; }
     const yard = w.buildingsOf(s).find(b => b.type === 'yard');
     if (!yard || yard.queue.length) return;
+    const biBefore = this.bi;
     const next = this.nextBuilding();
-    if (next) w.issueCommand(s, { type: 'produce', item: next });
+    if (next && !w.issueCommand(s, { type: 'produce', item: next }) && this.bi > biBefore) this.bi = biBefore;
   }
 
   nextBuilding() {
@@ -156,21 +159,31 @@ export class Commander {
           const tx = yard.tx + dx, ty = yard.ty + dy;
           if (w.canPlace(s, btype, tx, ty)) {
             w.issueCommand(s, { type: 'build', tx, ty });
-            return;
+            return true;
           }
         }
       }
     }
+    // 轮48：放不下（如 3x3 核电站被挤满）→ 序列回退，下次重试（否则 bi 已消费，该项永久丢失）
+    if (this.bi > 0) this.bi--;
+    return false;
   }
 
   // 部队生产：保持矿车数量；玩家出空军时补对空；其余按轮换爆兵
+  // 轮48：科技预算预留——建造序列未走完且没雷达时，钱<2500 不下新载具（给雷达让路；
+  // 否则爆兵把钱花光、雷达$1200永远攒不够，终极单位永不出场）
   produceArmy() {
     const w = this.world, s = this.side;
     const buildings = w.buildingsOf(s);
     const factory = buildings.find(b => b.type === 'factory');
     const barracks = buildings.find(b => b.type === 'barracks');
+    // 轮48修正：不限 bi——序列走完时 radar 可能还没建成（placing 失败/没钱），之后 yard 空转；
+    // 只要没雷达且钱<2500 就让路，直到雷达落地；雷达落地后没核电同样让路（npower $1200 攒不够则终极单位永不出场）
+    const hasRadar = buildings.some(b => b.type === 'radar');
+    const hasNPower = buildings.some(b => b.type === 'npower');
+    const savingTech = (!hasRadar || !hasNPower) && w.credits[s] < 2500;
 
-    if (factory && factory.queue.length < 2) {
+    if (factory && factory.queue.length < 2 && !savingTech) {
       const refs = buildings.filter(b => b.type === 'refinery').length;
       const harvs = w.unitsOf(s).filter(u => u.type === 'harvester').length;
       let item;
@@ -193,14 +206,30 @@ export class Commander {
           // 对空应急编队：天启需核电站前置，没解锁时别把产能浪费在必然失败的下单上
           cycle = hasRadar && hasNPower ? ['tyrant', 'hunter', 'hunter', 'tyrant', 'apoc'] : ['tyrant', 'hunter', 'hunter', 'tyrant'];
         }
-        item = cycle[this.armyCounter++ % cycle.length];
+        item = cycle[this.armyCounter % cycle.length];
+        // 轮48 终极单位攒钱：apoc/kirov/titan/carrier（$2400+）轮到但钱不够 → 不消费轮换、
+        // 工厂兵营全停存钱（否则便宜货把钱花光，$2800 永远攒不够）
+        const ULT = { apoc: 2800, kirov: 2400, titan: 3200, carrier: 6500 };
+        if (ULT[item] && w.credits[s] < ULT[item]) {
+          this.savingUlt = item;
+          return;
+        }
+        this.armyCounter++;
+        this.savingUlt = null;
       }
       w.issueCommand(s, { type: 'produce', item });
+    }
+    // 攒钱中：兵营也不下（全线存钱出终极）
+    if (this.savingUlt) {
+      const ULT2 = { apoc: 2800, kirov: 2400, titan: 3200, carrier: 6500 };
+      if (w.credits[s] >= (ULT2[this.savingUlt] ?? 999999)) this.savingUlt = null;
+      else return;
     }
     // 轮45：简单难度步兵限频（每4次决策=2s补一个，与“经济迟缓”定位一致；此前每秒一个步兵海，
     // 新手坦克hold死守会被动淹死）。普通/困难不变
     const infEvery = (this.diff.incomeMul ?? 1) < 0.8 ? 4 : 2;
-    if (barracks && barracks.queue.length < 1 && this.decisionN % infEvery === 0) {
+    // 轮48：兵营同样给雷达让路（否则步兵把钱花光，雷达永无出头之日）
+    if (barracks && barracks.queue.length < 1 && !savingTech && this.decisionN % infEvery === 0) {
       w.issueCommand(s, { type: 'produce', item: this.armyCounter % 5 === 0 ? 'rocket' : 'rifle' });
     }
     // 场上有无主补给站且己方未占：补工程师
