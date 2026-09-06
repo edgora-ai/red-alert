@@ -194,29 +194,29 @@ function boot() {
       if (renderer) minimap?.update(renderer); // 渲染器初始化失败时小地图视口框无依赖可算，跳过
       ui?.update();
 
-      // 音频：消费事件（空间化）+ 每帧烈度/配乐驱动
-      if (sound) {
+      // 音频：消费事件（空间化）+ 每帧烈度/配乐驱动（开局前 world 尚未构建：整段跳过）
+      if (sound && world) {
         if (world.winner) sound.musicPaused = true; // 胜负已分：战斗配乐淡出，把舞台留给胜负 jingle
         sound.drain(world.events, camera);
         sound.update(dt);
-      }
-      for (const e of world.events) {
-        if (e.type === 'underAttack') {
-          game.alertTtl = 2.2;
-          game.vignette = Math.min(1, game.vignette + 0.55);
-        }
-        if (e.type === 'superHit') {
-          // 轨道打击落地：全屏白闪冲击（0.4s CSS 淡出）。
-          // 恢复用 setTimeout 而非嵌套 rAF——rAF 被节流时（遮挡/后台）闪光会卡在峰值
-          const flashEl = document.getElementById('superFlash');
-          if (flashEl) {
-            flashEl.style.transition = 'none';
-            flashEl.style.opacity = 0.85;
-            setTimeout(() => { flashEl.style.transition = ''; flashEl.style.opacity = 0; }, 60);
+        for (const e of world.events) {
+          if (e.type === 'underAttack') {
+            game.alertTtl = 2.2;
+            game.vignette = Math.min(1, game.vignette + 0.55);
+          }
+          if (e.type === 'superHit') {
+            // 轨道打击落地：全屏白闪冲击（0.4s CSS 淡出）。
+            // 恢复用 setTimeout 而非嵌套 rAF——rAF 被节流时（遮挡/后台）闪光会卡在峰值
+            const flashEl = document.getElementById('superFlash');
+            if (flashEl) {
+              flashEl.style.transition = 'none';
+              flashEl.style.opacity = 0.85;
+              setTimeout(() => { flashEl.style.transition = ''; flashEl.style.opacity = 0; }, 60);
+            }
           }
         }
+        world.events.length = 0;
       }
-      world.events.length = 0;
 
       // 受击红晕 + 警报横幅衰减
       if (game.alertTtl > 0) game.alertTtl -= dt;
@@ -227,12 +227,12 @@ function boot() {
       // 全屏氛围：敌方超武充能红脉冲（伴随警报声浪）/ 低电力琥珀呼吸
       const alarmEl = document.getElementById('alarmGlow');
       if (alarmEl) {
-        const on = world.strikeAlarm && game.started && !world.winner;
+        const on = !!world && !!world.strikeAlarm && game.started && !world.winner;
         alarmEl.style.opacity = on ? (0.38 + 0.24 * Math.sin(now / 85)).toFixed(2) : 0;
       }
       const powerGlowEl = document.getElementById('lowPowerGlow');
       if (powerGlowEl) {
-        const low = world.power.player.low && game.started && !world.winner;
+        const low = !!world && !!world.power.player.low && game.started && !world.winner;
         powerGlowEl.style.opacity = low ? (0.3 + 0.18 * Math.sin(now / 240)).toFixed(2) : 0;
       }
     } catch (e) {
