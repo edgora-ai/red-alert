@@ -964,25 +964,31 @@ export function createSkirmish(seed = 20260801) {
   for (let i = 0; i < 5; i++) blob(w, rng, rng() * MAP_W, rng() * MAP_H, 2 + rng() * 2, T.ROCK);
   for (let i = 0; i < 8; i++) blob(w, rng, rng() * MAP_W, rng() * MAP_H, 2 + rng() * 2.5, T.TREE);
 
-  // 矿区：双方近矿 + 中场两片
-  orePatch(w, 24, 70, 4); orePatch(w, 72, 26, 4);
-  orePatch(w, 36, 48, 3); orePatch(w, 60, 48, 3);
+  // 基地位置：左下候选点 seed 抽取，敌方取中心对称点（180° 旋转对称保证公平）
+  const CANDIDATES = [[7, 79], [10, 74], [6, 71]];
+  const [px, py] = CANDIDATES[Math.floor(rng() * CANDIDATES.length)];
+  const ex = 93 - px, ey = 93 - py;
 
-  // 出生区域清场（左下玩家 / 右上电脑）
-  clearRect(w, 4, 72, 20, 20);
-  clearRect(w, 72, 4, 22, 20);
+  // 出生区域清场（覆盖基地+精炼厂+矿区外沿）——先清场后铺矿，矿不被清掉
+  clearRect(w, px - 3, py - 14, 21, 21);
+  clearRect(w, ex - 16, ey - 6, 21, 21);
+
+  // 矿区：双方近矿随基地相对布置，中场两片沿中线微抖动（保持中心对称）
+  const mj = Math.floor(rng() * 5) - 2; // -2..2
+  orePatch(w, px + 17, py - 9, 4); orePatch(w, ex - 17, ey + 9, 4);
+  orePatch(w, 36 + mj, 48, 3); orePatch(w, 60 - mj, 48, 3);
 
   // 初始基地
-  base(w, 'player', 7, 79);
-  base(w, 'enemy', 86, 14);
+  base(w, 'player', px, py);
+  base(w, 'enemy', ex, ey);
   // 中场护卫（让玩家前期有仗可打）
-  w.addUnit('enemy', 'tyrant', 60.5, 44.5);
-  w.addUnit('enemy', 'tyrant', 36.5, 51.5);
-  // 中立补给站：双方工程师争夺的经济要点（紧邻中场矿区）
-  clearRect(w, 36, 42, 3, 3);
-  clearRect(w, 58, 41, 3, 3);
-  w.addBuilding('neutral', 'outpost', 37, 43);
-  w.addBuilding('neutral', 'outpost', 59, 42);
+  w.addUnit('enemy', 'tyrant', 60 - mj + 0.5, 44.5);
+  w.addUnit('enemy', 'tyrant', 36 + mj + 0.5, 51.5);
+  // 中立补给站：双方工程师争夺的经济要点（紧邻中场矿区，随矿位布置）
+  clearRect(w, 36 + mj, 42, 3, 3);
+  clearRect(w, 58 - mj, 41, 3, 3);
+  w.addBuilding('neutral', 'outpost', 37 + mj, 43);
+  w.addBuilding('neutral', 'outpost', 59 - mj, 42);
 
   w.updateFog();
   return w;

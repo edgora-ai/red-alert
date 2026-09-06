@@ -15,7 +15,9 @@ const isDemo = params.has('demo');
 const isHeadless = params.has('ff') || params.has('lowfx');
 
 const canvas = document.getElementById('game');
-const world = createSkirmish((Date.now() % 90000) + 10000); // 每局随机地图
+// 地图种子：?seed=N 可复现同一张图（默认每局时间种子随机）
+const seedParam = parseInt(params.get('seed') || '0', 10);
+const world = createSkirmish(seedParam > 0 ? seedParam : (Date.now() % 900000) + 10000);
 const diff = params.get('diff') || 'normal';
 const ai = new Commander(world, 'enemy', diff);
 
