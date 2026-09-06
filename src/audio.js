@@ -101,7 +101,8 @@ export class Sound {
     if (cam && typeof x === 'number') {
       const dx = x - cam.x, dy = y - cam.y;
       const d = Math.hypot(dx, dy);
-      vol = Math.max(0.1, 1 - d / 42);
+      // 衰减放缓：屏幕边缘（d≈15-20）的交火在旧曲线下已掉一半音量，与可见度不匹配
+      vol = Math.max(0.12, 1 - d / 52);
       pan = Math.max(-1, Math.min(1, dx / 24)) * 0.7;
       muffle = Math.max(0.18, 1 - d / 70);
     }
@@ -133,7 +134,12 @@ export class Sound {
       if (e.type === 'underAttack') this.eventHeat = Math.min(1.2, this.eventHeat + 0.2);
       if (e.type === 'superHit') this.eventHeat = Math.min(1.2, this.eventHeat + 0.5); // 超武落点直接拉满段位
       if (e.type === 'siren') this.eventHeat = Math.min(1.2, this.eventHeat + 0.15);
-      const gap = { shot: 60, boom: 80, deposit: 350, move: 140, select: 90, ready: 400, error: 250, underAttack: 1500, promote: 300, superLaunch: 1200, superHit: 900, siren: 550, killConfirm: 1200, lowPower: 2500 }[e.type] ?? 60;
+      // 开火限频按武器分级：重炮/导弹齐射要听清每一响（45ms），步枪/机炮扫射合并（70ms）
+      const gapTable = { shot: null, boom: 80, deposit: 350, move: 140, select: 90, ready: 400, error: 250, underAttack: 1500, promote: 300, superLaunch: 1200, superHit: 900, siren: 550, killConfirm: 1200, lowPower: 2500 };
+      let gap = gapTable[e.type] ?? 60;
+      if (e.type === 'shot') {
+        gap = ['cannon', 'hcannon', 'railW', 'titanW', 'kirovW', 'cruise', 'mlrsW', 'apocW'].includes(e.w) ? 45 : 70;
+      }
       if (now - (this.last[e.type] || 0) < gap) continue;
       this.last[e.type] = now;
       this.play(e, cam);
@@ -173,7 +179,7 @@ export class Sound {
       case 'select': this.ack(880, 0.04, 0.05); break;
       case 'capture': this.fanfare([523, 659, 784, 1046], 0.12, 'sine'); break;
       case 'promote': this.promote(); break;
-      case 'underAttack': this.klaxon(); break;
+      case 'underAttack': this.klaxon(S(e.x, e.y)); break; // 受击警报空间化：听得出威胁方向
       case 'superLaunch': this.superCharge(S(e.x, e.y)); break;
       case 'superHit': this.superBoom(S(e.x, e.y)); break;
       case 'siren': this.strikeSiren(S(e.x, e.y)); break; // 敌方超武充能循环警报
@@ -329,10 +335,10 @@ export class Sound {
     this.fanfare([587, 740, 880], 0.14, 'sawtooth');
     this.noise({ dur: 0.25, type: 'highpass', freq: 5000, gain: 0.08, delay: 0.1 });
   }
-  klaxon() {
-    // 受击警报是最重要的提醒音：双音加大音量 + 高低交替更刺耳
+  klaxon(out) {
+    // 受击警报是最重要的提醒音：双音加大音量 + 高低交替更刺耳（空间化传入 out）
     for (let i = 0; i < 3; i++) {
-      this.tone({ freq: i % 2 ? 466 : 622, dur: 0.16, type: 'square', gain: 0.13, delay: i * 0.17, vary: false, lp: 2200 });
+      this.tone({ freq: i % 2 ? 466 : 622, dur: 0.16, type: 'square', gain: 0.13, delay: i * 0.17, vary: false, lp: 2200, out });
     }
   }
   // 超级武器：天顶充能爬升（预警期）
