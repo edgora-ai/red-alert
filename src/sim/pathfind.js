@@ -48,6 +48,12 @@ export function findPath(world, sx, sy, tx, ty, fly, maxExpand = Infinity) {
   if (fly) return [{ x: tx + 0.5, y: ty + 0.5 }];
   if (!world.inBounds(tx, ty)) return null;
 
+  // 起点被挡（单位恰在建筑 footprint 内等）：吸附最近可达格再搜——否则 A* 全邻居被挡返回 null
+  if (world.isBlocked(sx, sy)) {
+    const salt = nearestOpen(world, sx, sy, 3);
+    if (salt) { sx = salt.x; sy = salt.y; }
+  }
+
   // 目标被挡时吸附最近可达格
   if (world.isBlocked(tx, ty)) {
     const alt = nearestOpen(world, tx, ty, 3);
