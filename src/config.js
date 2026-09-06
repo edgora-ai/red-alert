@@ -126,3 +126,19 @@ export const DIFFS = {
 export function buildTicks(def) {
   return Math.max(1, Math.round(def.buildTime * TICK_RATE));
 }
+
+// 地图原型（遭遇战生成器变体）
+export const MAP_TYPES = {
+  standard: { name: '标准遭遇战', desc: '对称矿区 · 中立站争夺' },
+  river:    { name: '河流对峙', desc: '中央大河 · 桥梁要冲' },
+  maze:     { name: '绿洲迷宫', desc: '岩林走廊 · 伏击天堂' },
+  plains:   { name: '开放平原', desc: '一马平川 · 正面会战' },
+};
+
+// 玩法模式（开局参数包：credits=初始资金 aiWaveMul=AI 波次节奏倍率 trickleMul=AI 补贴倍率）
+export const GAME_MODES = {
+  classic: { name: '经典歼灭', desc: '标准节奏', credits: 5000, aiWaveMul: 1, trickleMul: 1, neutralMul: 1 },
+  blitz:   { name: '闪电战', desc: '双倍节奏 · 快攻快守', credits: 8000, aiWaveMul: 0.5, trickleMul: 2, neutralMul: 1 },
+  standoff:{ name: '重装对决', desc: '开局泰坦 vs 天启', credits: 6000, aiWaveMul: 1.2, trickleMul: 1, neutralMul: 1, eliteStart: true },
+  neutral: { name: '中立争夺', desc: '补给站收入 ×3 · 占领奖金', credits: 6000, aiWaveMul: 1, trickleMul: 1, neutralMul: 3, captureBonus: 800 },
+};

@@ -1,8 +1,8 @@
 // 启动与主循环：固定步长 tick + 每帧渲染；开始界面选难度、P 暂停、+/- 变速
 // 健壮性：开始按钮最先接线；子系统/帧循环异常全部可见化，绝不静默冻结
 
-import { TICK_RATE } from './config.js';
-import { createSkirmish } from './sim/world.js';
+import { TICK_RATE, GAME_MODES } from './config.js';
+import { createSkirmish, applyEliteStart } from './sim/world.js';
 import { Commander } from './sim/ai.js';
 import { Renderer } from './render/renderer.js';
 import { Minimap } from './render/minimap.js';
@@ -17,19 +17,17 @@ const isHeadless = params.has('ff') || params.has('lowfx');
 const canvas = document.getElementById('game');
 // 地图种子：?seed=N 可复现同一张图（默认每局时间种子随机）
 const seedParam = parseInt(params.get('seed') || '0', 10);
-const world = createSkirmish(seedParam > 0 ? seedParam : (Date.now() % 900000) + 10000);
-const diff = params.get('diff') || 'normal';
-const ai = new Commander(world, 'enemy', diff);
 
-// 相机对准玩家基地（3D 轨道相机：目标点 + 距离 + 方位角）
-const yard = world.buildingsOf('player').find(b => b.type === 'yard');
-const camera = { x: yard.x + 4, y: yard.y + 3, dist: 24, yaw: 0.45 };
+let world = null, ai = null;
+
+// 相机（3D 轨道相机：目标点 + 距离 + 方位角）——开局时对准玩家基地
+const camera = { x: 48, y: 48, dist: 24, yaw: 0.45 };
 
 const game = {
-  world, selection: new Set(), markers: [], selectBox: null, mouseTile: null,
+  world: null, selection: new Set(), markers: [], selectBox: null, mouseTile: null,
   started: false, paused: false,
   SPEEDS: [0.5, 1, 2, 4], speedIdx: 1,
-  diff,
+  diff: params.get('diff') || 'normal',
   userCam: false, // 用户手动操作过相机（演示模式据此停止自动跟随）
   userPlay: false, // 用户亲自下过命令（演示模式据此停止接管玩家侧）
   alertTtl: 0, vignette: 0,
@@ -41,9 +39,77 @@ function showFatal(msg) {
   if (tip) { tip.textContent = `⚠ 脚本异常：${msg}（已拦截，游戏继续运行）`; tip.style.display = 'block'; }
 }
 let renderer = null, input = null, ui = null, sound = null, minimap = null;
+
 try {
-  renderer = new Renderer(canvas, world, camera, game);
+  sound = new Sound();
 } catch (e) { showFatal(e.message); console.error(e); }
+
+// 开局：按所选地图/玩法/难度/初始资源，构建全新世界并换绑全部子系统
+function startGame() {
+  const diffSel = document.querySelector('.diff-btn.active:not(.fund-btn)')?.dataset.diff || 'normal';
+  const mapKey = document.querySelector('.map-btn.active')?.dataset.map || 'standard';
+  const modeKey = document.querySelector('.mode-btn.active')?.dataset.mode || 'classic';
+  const mode = GAME_MODES[modeKey] ?? GAME_MODES.classic;
+  const fund = parseInt(document.querySelector('.fund-btn.active')?.dataset.fund || '5000', 10);
+  const seed = seedParam > 0 ? seedParam : (Date.now() % 900000) + 10000;
+
+  world = createSkirmish(seed, mapKey);
+  world.mode = mode;
+  world.credits.player = fund;
+  world.credits.enemy = fund;
+  game.world = world;
+  game.diff = diffSel;
+  game.selection.clear();
+  game.markers.length = 0;
+  ai = new Commander(world, 'enemy', diffSel);
+  if (mode.eliteStart) applyEliteStart(world);
+  const yard = world.buildingsOf('player').find(b => b.type === 'yard') || world.buildingsOf('player')[0];
+  camera.x = yard.x + 4; camera.y = yard.y + 3; camera.dist = 24; camera.yaw = 0.45;
+
+  try {
+    if (renderer) renderer.setWorld(world); // 复用渲染器：重建地形层+清空实体网格
+    else renderer = new Renderer(canvas, world, camera, game);
+  } catch (e) { showFatal(e.message); console.error(e); }
+
+  try {
+    if (minimap) minimap.setWorld(world);
+    else minimap = new Minimap(document.getElementById('minimap'), world, camera, game);
+    input = new Input(game, canvas, world, camera, sound, renderer);
+    ui = new UI(game, world, sound, renderer);
+    ui.bindSuper(() => input.startSuperTarget());
+    minimap.bindCmd((x, y, queued) => {
+      game.userPlay = true;
+      input.rightCommand(x, y, queued);
+    });
+  } catch (e) {
+    showFatal(e.message);
+    console.error(e);
+  }
+  if (input) input.world = world;
+  if (ui) ui.world = world;
+  window.addEventListener('resize', () => renderer?.resize());
+
+  window.__dbg = { world, game, camera, renderer, input, sound, ui, ai };
+  if (ui) ui.el.diffBadge.textContent = `AI · ${ai.diff.name} · ${mode.name}`;
+  startEl.classList.add('hidden');
+  game.started = true;
+  game.paused = false;
+  // 开局引导（只播一次）：电厂→兵营→采矿三步走
+  world.messages.push({ side: 'player', text: '指挥官：建造发电厂，再建兵营与矿车，扩张采矿线！（B/N/C/K 切换建造页）', ttl: 420 });
+  // 开局编组：初始坦克编 1 队、步兵编 2 队（双击数字键跳视角）
+  try {
+    const tanks = world.unitsOf('player').filter(u => u.type === 'cheetah' || u.type === 'tyrant').map(u => u.id);
+    const infs = world.unitsOf('player').filter(u => u.type === 'rifle' || u.type === 'rocket').map(u => u.id);
+    if (input) {
+      input.groups = {};
+      if (tanks.length) input.groups['1'] = tanks;
+      if (infs.length) input.groups['2'] = infs;
+    }
+  } catch { /* 编组失败不挡开局 */ }
+  if (isDemo) {
+    import('./demo.js').then(m => m.startDemo({ world, game, camera, ai })).catch(e => showFatal(e.message));
+  }
+}
 
 // 开始界面：选难度 → 开战（同时解锁 WebAudio）
 const startEl = document.getElementById('start');
@@ -61,62 +127,35 @@ document.querySelectorAll('.fund-btn').forEach(btn => {
     btn.classList.add('active');
   };
 });
+// 地图 / 玩法选择
+document.querySelectorAll('.map-btn').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.map-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  };
+});
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  };
+});
 startBtn.onclick = () => {
   try {
     sound?.unlock();
-    // 难度在开局前选定：重建 Commander 应用难度参数
-    const diffSel = document.querySelector('.diff-btn.active:not(.fund-btn)')?.dataset.diff || 'normal';
-    if (diffSel !== diff) Object.assign(ai, new Commander(world, 'enemy', diffSel));
-    game.diff = diffSel;
-    // 初始资源：标准 5000 / 富矿 10000（双端同步，保持对称博弈）
-    const fund = parseInt(document.querySelector('.fund-btn.active')?.dataset.fund || '5000', 10);
-    world.credits.player = fund;
-    world.credits.enemy = fund;
-    if (ui) ui.el.diffBadge.textContent = `AI · ${ai.diff.name}`;
-    startEl.classList.add('hidden');
-    game.started = true;
-    // 开局引导（只播一次）：电厂→兵营→采矿三步走
-    world.messages.push({ side: 'player', text: '指挥官：建造发电厂，再建兵营与矿车，扩张采矿线！（B/N/C/K 切换建造页）', ttl: 420 });
-    // 开局编组：初始坦克编 1 队、步兵编 2 队（双击数字键跳视角）
-    try {
-      const tanks = world.unitsOf('player').filter(u => u.type === 'cheetah' || u.type === 'tyrant').map(u => u.id);
-      const infs = world.unitsOf('player').filter(u => u.type === 'rifle' || u.type === 'rocket').map(u => u.id);
-      if (input) {
-        if (tanks.length) input.groups['1'] = tanks;
-        if (infs.length) input.groups['2'] = infs;
-      }
-    } catch { /* 编组失败不挡开局 */ }
+    startGame();
   } catch (e) { showFatal(e.message); console.error(e); }
 };
 // 无交互环境（自动化）直接开战
 if (isHeadless) startBtn.click();
 
 try {
-  minimap = new Minimap(document.getElementById('minimap'), world, camera, game);
-  sound = new Sound();
-  input = new Input(game, canvas, world, camera, sound, renderer);
-  ui = new UI(game, world, sound, renderer);
-  ui.bindSuper(() => input.startSuperTarget());
-  // 小地图右键 = 同主画布右键语义（移动/攻击/排队，rightCommand 内已打点），左键仍是跳视角
-  minimap.bindCmd((x, y, queued) => {
-    game.userPlay = true;
-    input.rightCommand(x, y, queued);
-  });
   window.addEventListener('resize', () => renderer?.resize());
-} catch (e) {
-  showFatal(e.message);
-  console.error(e);
-}
+} catch { /* 忽略 */ }
 boot();
 
 function boot() {
-  // 演示/自测模式：?demo=1 时自动建造并发起进攻
-  if (isDemo) {
-    game.started = true;
-    startEl?.classList.add('hidden');
-    import('./demo.js').then(m => m.startDemo({ world, game, camera, ai })).catch(e => showFatal(e.message));
-  }
-
+  // 演示/自测模式在 startGame() 内挂接（世界按所选地图构建后启动）
   let last = performance.now();
   let acc = 0;
   let lastFrame = last;

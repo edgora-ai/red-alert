@@ -12,11 +12,14 @@ export class Commander {
     this.world = world;
     this.side = side;
     this.diff = DIFFS[diff] || DIFFS.normal;
+    const mode = world.mode ?? {};
+    this.waveMul = mode.aiWaveMul ?? 1;   // 玩法模式：波次节奏倍率
+    this.trickleMul = mode.trickleMul ?? 1; // 玩法模式：运营补贴倍率
     this.timer = 0;
     this.bi = 0;          // 建造序列进度
     this.armyCounter = 0; // 兵种轮换计数
     this.waveNo = 0;
-    this.waveCd = this.diff.waveCd0 ?? 500; // 首波缓冲（world tick，见 DIFFS 节奏曲线）
+    this.waveCd = (this.diff.waveCd0 ?? 500) * this.waveMul; // 首波缓冲（world tick）
     this.trickle = 0;
     this.defendCd = 0;
   }
@@ -27,10 +30,10 @@ export class Commander {
     this.decisionN = (this.decisionN ?? 0) + 1;
     const w = this.world;
     if (w.winner) return;
-    // 难度运营补贴：每 2s 结算一次（= 每 4 次决策）
+    // 难度+模式运营补贴：每 2s 结算一次（= 每 4 次决策）
     if (++this.trickle >= 4) {
       this.trickle = 0;
-      w.credits[this.side] += Math.round(this.diff.trickle * this.diff.incomeMul);
+      w.credits[this.side] += Math.round(this.diff.trickle * this.diff.incomeMul * this.trickleMul);
     }
     this.macro();
     this.produceArmy();
@@ -268,7 +271,7 @@ export class Commander {
     const ids = army.map(u => u.id);
     w.issueCommand(s, { type: 'attackmove', ids, x: yard.x, y: yard.y });
     this.waveNo++;
-    this.waveCd = this.diff.waveGap;
+    this.waveCd = this.diff.waveGap * this.waveMul;
   }
 
   // 基地防守：警报点在自家附近时，空闲部队回防（限频，防抽风）

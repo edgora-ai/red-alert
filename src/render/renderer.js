@@ -84,6 +84,7 @@ export class Renderer {
     this.scene.add(this.sun, this.sunTarget);
     this.sun.target = this.sunTarget;
 
+    this.terrainLayers = []; // 世界地形层（setWorld 换绑时整体重建）
     this.buildSky();
     this.buildEnvironment();
     this.buildGround();
@@ -282,6 +283,7 @@ export class Renderer {
     surround.rotation.x = -Math.PI / 2;
     surround.position.set(w.w / 2, -0.08, w.h / 2);
     this.scene.add(surround);
+    this.terrainLayers.push(ground, surround);
   }
 
   // ---------- 动态水面（程序波光着色器） ----------
@@ -332,6 +334,7 @@ export class Renderer {
     water.renderOrder = 1;
     this.waterMat = mat;
     this.scene.add(water);
+    this.terrainLayers.push(water);
   }
 
   // ---------- 云影层（半透明云团缓慢漂移，赋予战场时间流逝感） ----------
@@ -372,6 +375,7 @@ export class Renderer {
     plane.position.set(w.w / 2, 0.05, w.h / 2);
     plane.renderOrder = 4;
     this.scene.add(plane);
+    this.terrainLayers.push(plane);
   }
 
   updateFogTexture() {
@@ -418,6 +422,7 @@ export class Renderer {
           im.setMatrixAt(i, dummy.matrix.clone().multiply(local));
         });
         this.scene.add(im);
+        this.terrainLayers.push(im);
       }
     };
     inst(makeTree(), trees);
@@ -1148,6 +1153,30 @@ export class Renderer {
     for (const a of this.stunArcs ?? []) {
       if (a.ttl > 0 && !frozen && (a.ttl -= this.frameDt) <= 0) a.line.visible = false;
     }
+  }
+
+  // 换绑新世界（开局重开所选地图）：重建地形层、清空实体网格与弹道/拖尾状态
+  setWorld(world) {
+    for (const layer of this.terrainLayers) {
+      this.scene.remove(layer);
+      layer.traverse?.(m => { m.geometry?.dispose?.(); m.material?.dispose?.(); });
+      if (layer.material?.map) layer.material.map.dispose();
+    }
+    this.terrainLayers.length = 0;
+    for (const [, rec] of this.meshMap) {
+      this.scene.remove(rec.group);
+      if (rec.ring) this.scene.remove(rec.ring);
+    }
+    this.meshMap.clear();
+    this.trailMap.clear();
+    this.projMeshMap?.clear();
+    this.projPool?.forEach(m => { m.visible = false; });
+    this.lastFogTick = -1;
+    this.world = world;
+    this.buildGround();
+    this.buildWater();
+    this.buildDeco();
+    this.buildFogPlane();
   }
 
   // 特效 mesh 统一回收：飘字纹理独享需释放；Sprite 共享内置几何体不能 dispose（会毁掉全局血条）

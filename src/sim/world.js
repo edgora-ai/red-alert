@@ -605,11 +605,13 @@ export class World {
 
   // 中立补给站持续产出资金
   updateNeutralIncome() {
+    const mul = this.mode?.neutralMul ?? 1;
+    const income = ECON.neutral.income * mul;
     for (const b of this.entities.values()) {
       if (b.kind !== 'building' || b.dead || b.type !== 'outpost') continue;
       if (b.side !== 'player' && b.side !== 'enemy') continue;
-      this.credits[b.side] += ECON.neutral.income;
-      if (b.side === 'player') this.fx.push({ type: 'text', text: `+$${ECON.neutral.income}`, color: '#ffd866', x: b.x, y: b.y - 0.9, ttl: 80, max: 80 });
+      this.credits[b.side] += income;
+      if (b.side === 'player') this.fx.push({ type: 'text', text: `+$${income}`, color: '#ffd866', x: b.x, y: b.y - 0.9, ttl: 80, max: 80 });
       this.events.push({ type: 'deposit', x: b.x, y: b.y });
     }
   }
@@ -842,7 +844,12 @@ export class World {
       t.side = u.side;
       t.queue = []; t.progress = 0;
       const label = BUILDINGS[t.type].name;
-      if (u.side === 'player') this.fx.push({ type: 'text', text: wasNeutral ? '占领！' : '夺占！', color: '#7ee787', x: t.x, y: t.y - 1, ttl: 90, max: 90 });
+      // 玩法模式占领奖金（中立争夺线）
+      const bonus = this.mode?.captureBonus || 0;
+      if (bonus && wasNeutral) this.credits[u.side] += bonus;
+      if (u.side === 'player') {
+        this.fx.push({ type: 'text', text: wasNeutral ? (bonus ? `占领！+$${bonus}` : '占领！') : '夺占！', color: '#7ee787', x: t.x, y: t.y - 1, ttl: 90, max: 90 });
+      }
       this.messages.push({ side: u.side, text: `${wasNeutral ? '已占领中立' : '已占领敌方'}${label}！`, ttl: 150 });
       this.events.push({ type: 'capture' });
       this.entities.delete(u.id);
@@ -977,14 +984,21 @@ function groupOffsets(n) {
 }
 
 // ---------- 遭遇战地图生成 ----------
-export function createSkirmish(seed = 20260801) {
+// mapType：standard 标准 / river 河流对峙 / maze 绿洲迷宫 / plains 开放平原（见 config.MAP_TYPES）
+export function createSkirmish(seed = 20260801, mapType = 'standard') {
   const w = new World(seed);
   const rng = w.rng;
+  const isRiver = mapType === 'river';
+  const isMaze = mapType === 'maze';
+  const isPlains = mapType === 'plains';
 
-  // 装饰：水域/岩石/树林
-  for (let i = 0; i < 3; i++) blob(w, rng, 24 + rng() * 48, 24 + rng() * 48, 3 + rng() * 3, T.WATER);
-  for (let i = 0; i < 5; i++) blob(w, rng, rng() * MAP_W, rng() * MAP_H, 2 + rng() * 2, T.ROCK);
-  for (let i = 0; i < 8; i++) blob(w, rng, rng() * MAP_W, rng() * MAP_H, 2 + rng() * 2.5, T.TREE);
+  // 装饰：密度按地图原型调整（平原稀疏 / 迷宫密布）
+  const nWater = isPlains ? 1 : isRiver ? 1 : 3;
+  const nRock = isMaze ? 10 : isPlains ? 2 : 5;
+  const nTree = isMaze ? 18 : isPlains ? 3 : 8;
+  for (let i = 0; i < nWater; i++) blob(w, rng, 24 + rng() * 48, 24 + rng() * 48, 3 + rng() * 3, T.WATER);
+  for (let i = 0; i < nRock; i++) blob(w, rng, rng() * MAP_W, rng() * MAP_H, 2 + rng() * (isMaze ? 3.5 : 2), T.ROCK);
+  for (let i = 0; i < nTree; i++) blob(w, rng, rng() * MAP_W, rng() * MAP_H, 2 + rng() * (isMaze ? 3 : 2.5), T.TREE);
 
   // 基地位置：左下候选点 seed 抽取，敌方取中心对称点（180° 旋转对称保证公平）
   const CANDIDATES = [[7, 79], [10, 74], [6, 71]];
@@ -995,25 +1009,51 @@ export function createSkirmish(seed = 20260801) {
   clearRect(w, px - 3, py - 14, 21, 21);
   clearRect(w, ex - 16, ey - 6, 21, 21);
 
-  // 矿区：双方近矿随基地相对布置，中场两片沿中线微抖动（保持中心对称）
-  const mj = Math.floor(rng() * 5) - 2; // -2..2
-  orePatch(w, px + 17, py - 9, 4); orePatch(w, ex - 17, ey + 9, 4);
-  orePatch(w, 36 + mj, 48, 3); orePatch(w, 60 - mj, 48, 3);
+  if (isRiver) {
+    // 河流对峙：中央横贯大河 + 双桥（桥列保持净空，blob 杂物后重清）
+    for (let ty = 44; ty <= 51; ty++)
+      for (let tx = 0; tx < MAP_W; tx++)
+        if (!(tx >= 18 && tx <= 22) && !(tx >= 72 && tx <= 76)) w.tiles[w.idx(tx, ty)] = T.WATER;
+    for (let ty = 42; ty <= 53; ty++)
+      for (const bxs of [[18, 22], [72, 76]])
+        for (let tx = bxs[0]; tx <= bxs[1]; tx++) w.tiles[w.idx(tx, ty)] = T.GRASS;
+    // 桥头矿区（渡河跳板）+ 桥头中立站 + 守桥护卫
+    orePatch(w, 20, 38, 3); orePatch(w, 75, 38, 3); orePatch(w, 20, 58, 3); orePatch(w, 75, 58, 3);
+    clearRect(w, 16, 41, 3, 3); clearRect(w, 70, 41, 3, 3);
+    w.addBuilding('neutral', 'outpost', 17, 42);
+    w.addBuilding('neutral', 'outpost', 71, 42);
+    w.addUnit('enemy', 'tyrant', 20.5, 42.5);
+    w.addUnit('enemy', 'tyrant', 74.5, 53.5);
+  } else {
+    // 矿区：双方近矿随基地相对布置，中场两片沿中线微抖动（保持中心对称）
+    const mj = Math.floor(rng() * 5) - 2; // -2..2
+    orePatch(w, px + 17, py - 9, 4); orePatch(w, ex - 17, ey + 9, 4);
+    if (isPlains) { orePatch(w, px + 24, py - 3, 3); orePatch(w, ex - 24, ey + 3, 3); }
+    orePatch(w, 36 + mj, 48, 3); orePatch(w, 60 - mj, 48, 3);
+    // 中场护卫（让玩家前期有仗可打）
+    w.addUnit('enemy', 'tyrant', 60 - mj + 0.5, 44.5);
+    w.addUnit('enemy', 'tyrant', 36 + mj + 0.5, 51.5);
+    // 中立补给站：双方工程师争夺的经济要点（紧邻中场矿区，随矿位布置）
+    clearRect(w, 36 + mj, 42, 3, 3);
+    clearRect(w, 58 - mj, 41, 3, 3);
+    w.addBuilding('neutral', 'outpost', 37 + mj, 43);
+    w.addBuilding('neutral', 'outpost', 59 - mj, 42);
+  }
 
   // 初始基地
   base(w, 'player', px, py);
   base(w, 'enemy', ex, ey);
-  // 中场护卫（让玩家前期有仗可打）
-  w.addUnit('enemy', 'tyrant', 60 - mj + 0.5, 44.5);
-  w.addUnit('enemy', 'tyrant', 36 + mj + 0.5, 51.5);
-  // 中立补给站：双方工程师争夺的经济要点（紧邻中场矿区，随矿位布置）
-  clearRect(w, 36 + mj, 42, 3, 3);
-  clearRect(w, 58 - mj, 41, 3, 3);
-  w.addBuilding('neutral', 'outpost', 37 + mj, 43);
-  w.addBuilding('neutral', 'outpost', 59 - mj, 42);
 
   w.updateFog();
   return w;
+}
+
+// 玩法模式「重装对决」：双方开局获得一台终极单位（玩家泰坦 / 红军天启）
+export function applyEliteStart(world) {
+  const py = world.buildingsOf('player').find(b => b.type === 'yard');
+  const ey = world.buildingsOf('enemy').find(b => b.type === 'yard');
+  if (py) world.spawnUnitNear('player', 'titan', py);
+  if (ey) world.spawnUnitNear('enemy', 'apoc', ey);
 }
 
 function blob(w, rng, cx, cy, r, tile) {

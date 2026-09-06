@@ -13,6 +13,7 @@ function check(name, cond, extra = '') {
 
 const world = createSkirmish(20260801);
 const ai = new Commander(world, 'enemy');
+const originYard = world.buildingsOf('player').find(b => b.type === 'yard'); // 随机地图：记住初始基地位（生成时已清场）
 
 const startCredits = world.credits.player;
 const enemyStartUnits = world.unitsOf('enemy').length;
@@ -91,8 +92,11 @@ const enemyBuildingsAfter = world.buildingsOf('enemy').length;
 check('AI 持续扩张建筑', enemyBuildingsAfter >= enemyBuildingsBefore, `enemy buildings ${enemyBuildingsBefore} -> ${enemyBuildingsAfter}`);
 check('模拟长跑无异常结束', true, `tick=${world.tickCount} winner=${world.winner ?? '未分胜负'}`);
 
-// —— 阶段5：科技研发（AI 交战可能已推平基地：重建建造厂保证后续生产线） ——
-if (!world.buildingsOf('player').some(b => b.type === 'yard')) world.addBuilding('player', 'yard', 7, 79);
+// —— 阶段5：科技研发（AI 行为已在阶段4验证；此后转入机制验证——清场敌方部队并停用波次，排除随机拆家干扰） ——
+for (const e of [...world.entities.values()]) if (e.side === 'enemy' && e.kind === 'unit') world.entities.delete(e.id);
+ai.waveCd = 99999999;
+if (!world.buildingsOf('player').some(b => b.type === 'yard')) world.addBuilding('player', 'yard', originYard.tx, originYard.ty);
+if (!world.buildingsOf('player').some(b => b.type === 'power')) world.addBuilding('player', 'power', originYard.tx + 4, originYard.ty); // 防低电减半研发速度
 world.credits.player = 9000;
 function findPlace(btype) {
   const yard = world.buildingsOf('player').find(b => b.type === 'yard');
@@ -110,13 +114,32 @@ world.issueCommand('player', { type: 'produce', item: 'ap' });
 let apQueued = false;
 for (const b of world.buildingsOf('player')) if (b.queue?.includes('ap')) apQueued = true;
 check('科技进入研发队列（雷达站）', apQueued);
-for (let i = 0; i < 1200 && !world.upgrades.player.owned.has('ap'); i++) world.tick();
+// AI 可能中途拆掉雷达：自愈式等待（雷达/订单丢失就重建续排），保证确定性完成
+for (let i = 0; i < 3600 && !world.upgrades.player.owned.has('ap'); i++) {
+  world.tick();
+  let yard5 = world.buildingsOf('player').find(b => b.type === 'yard');
+  if (!yard5) {
+    world.addBuilding('player', 'yard', originYard.tx, originYard.ty);
+    world.addBuilding('player', 'power', originYard.tx + 4, originYard.ty);
+    continue;
+  }
+  const radar5 = world.buildingsOf('player').find(b => b.type === 'radar');
+  if (!radar5 || !radar5.queue.includes('ap')) {
+    world.credits.player = 12000;
+    if (!radar5) {
+      const spot5 = findPlace('radar');
+      if (spot5) world.addBuilding('player', 'radar', spot5.tx, spot5.ty);
+    }
+    const r5 = world.buildingsOf('player').find(b => b.type === 'radar');
+    if (r5 && !r5.queue.includes('ap')) world.issueCommand('player', { type: 'produce', item: 'ap' });
+  }
+}
 check('精准弹药研发完成（全军火力+20%）', world.upgrades.player.fire === 1.2 && world.upgrades.player.owned.has('ap'),
   `fire=${world.upgrades.player.fire}`);
 check('重复研发被拒绝', world.issueCommand('player', { type: 'produce', item: 'ap' }) === false);
 
 // —— 阶段6：火箭炮齐射 ——
-const target6 = world.unitsOf('enemy')[0];
+const target6 = world.unitsOf('enemy')[0] || world.addUnit('enemy', 'tyrant', 30.5, 55.5);
 const mlrs = target6 ? world.addUnit('player', 'mlrs', target6.x - 6, target6.y) : null;
 let maxProj = 0;
 if (target6 && mlrs) {

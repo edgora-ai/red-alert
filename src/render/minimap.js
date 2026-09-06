@@ -47,6 +47,12 @@ export class Minimap {
   // main 注入：右键小地图命令回调 (x, y, queued)
   bindCmd(cb) { this.cmdCb = cb; }
 
+  // 开局重开换绑新世界（地形预渲染重建）
+  setWorld(world) {
+    this.world = world;
+    this.prerender();
+  }
+
   prerender() {
     const t = document.createElement('canvas');
     t.width = t.height = this.cv.width;
