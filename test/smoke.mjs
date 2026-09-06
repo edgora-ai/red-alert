@@ -1045,5 +1045,46 @@ check('阵营门：玩家无法生产空天航母、AI 无法生产浮空炮艇'
   check('P2-10游戏内帮助面板（F1手册接线）', html.includes('helpPanel') && inputJs.includes('helpPanel'));
 }
 
+// —— 阶段31：轮43 矩阵扫荡回归（已抵达挂机 / 残部指示 / 歼灭自动索敌） ——
+{
+  // 31.1 已抵达 attackmove 转 idle：distGoal<1.5、无目标无路径 → 不再永远挂着 attackmove
+  // （addUnit 落点被挡会吸附：下单后再把单位摆到目标 1 格内，保证前置条件精确成立）
+  const w43 = createSkirmish(434343);
+  const a43 = w43.addUnit('player', 'cheetah', 30.5, 60.5);
+  a43.order = { type: 'attackmove', x: 31.0, y: 60.0 };
+  a43.x = 30.6; a43.y = 60.2;
+  a43.targetId = null; a43.path = null;
+  w43.tick();
+  check('轮43已抵达attackmove转idle（不再永久挂单）', a43.order?.type === 'idle', `order=${a43.order?.type}`);
+}
+{
+  // 31.2 残部指示：敌方建筑全毁+剩1散兵 → 给玩家警报点+标定消息
+  const w44 = createSkirmish(444344);
+  for (const b of w44.buildingsOf('enemy')) w44.killEntity(b);
+  for (const u of w44.unitsOf('enemy').slice(1)) w44.killEntity(u);
+  const rem44 = w44.unitsOf('enemy');
+  w44.tickCount = 149; // 下一 tick=150，命中 %150 窗口
+  w44.messages.length = 0;
+  w44.tick();
+  check('轮43残部指示（建筑全毁标定最后敌人）', rem44.length === 1
+    && w44.alerts.some(a => a.side === 'player') && w44.messages.some(m => m.text.includes('残部')),
+    `rem=${rem44.length} alerts=${w44.alerts.length}`);
+}
+{
+  // 31.3 歼灭自动索敌：敌方建筑全毁后 idle/attackmove 部队自动朝残敌接力
+  const w45 = createSkirmish(454345);
+  for (const b of w45.buildingsOf('enemy')) w45.killEntity(b);
+  for (const u of w45.unitsOf('enemy').slice(1)) w45.killEntity(u);
+  const foe45 = w45.unitsOf('enemy')[0];
+  foe45.x = 80; foe45.y = 20;
+  const mop45 = w45.addUnit('player', 'cheetah', 20.5, 60.5);
+  mop45.order = { type: 'idle' }; mop45.targetId = null; mop45.path = null;
+  w45.lastMineTick = { player: 999999, enemy: 999999 };
+  w45.tickCount = 59; // 下一 tick=60，命中 %60 窗口
+  w45.tick();
+  check('轮43歼灭自动索敌（残敌方向接力推进）', mop45.order?.type === 'attackmove' && !!mop45.path,
+    `order=${mop45.order?.type} path=${mop45.path ? mop45.path.length : mop45.path}`);
+}
+
 console.log(`\n${failures === 0 ? '全部通过 ✔' : failures + ' 项失败 ✘'}`);
 process.exit(failures === 0 ? 0 : 1);

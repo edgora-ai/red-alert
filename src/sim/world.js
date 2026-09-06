@@ -958,6 +958,41 @@ export class World {
     }
   }
 
+  // 残部指示：一方建筑全毁且只剩 ≤2 散兵 → 给对手指向最后敌人的警报点（限频，避免“推平基地找不到人”僵局）
+  updateLastStand() {
+    if (this.tickCount % 150 !== 0) return;
+    for (const loser of ['enemy', 'player']) {
+      if (this.buildingsOf(loser).length > 0) continue;
+      const rem = this.unitsOf(loser);
+      if (rem.length === 0 || rem.length > 2) continue;
+      const foe = loser === 'enemy' ? 'player' : 'enemy';
+      if (this.tickCount - (this.lastStandTick ?? -9999) < 900) continue;
+      this.lastStandTick = this.tickCount;
+      const c = rem.reduce((a, u) => ({ x: a.x + u.x / rem.length, y: a.y + u.y / rem.length }), { x: 0, y: 0 });
+      this.alerts.push({ x: c.x, y: c.y, ttl: 150, max: 150, side: foe });
+      if (foe === 'player') {
+        this.messages.push({ side: 'player', text: `📍 敌军残部位置已标定（小地图红圈），全歼即胜利！`, ttl: 220 });
+        this.events.push({ type: 'siren' });
+      }
+    }
+  }
+
+  // 歼灭后自动索敌：attackmove/idle 部队无目标时，朝已知残敌方向接力（防“基地推平人挂机”）
+  updateMopup(side) {
+    if (this.tickCount % 60 !== 0) return;
+    if (this.buildingsOf(side === 'player' ? 'enemy' : 'player').length > 0) return;
+    const foes = this.unitsOf(side === 'player' ? 'enemy' : 'player');
+    if (!foes.length) return;
+    const c = foes.reduce((a, u) => ({ x: a.x + u.x / foes.length, y: a.y + u.y / foes.length }), { x: 0, y: 0 });
+    for (const u of this.unitsOf(side)) {
+      if (!u.weapon || u.targetId != null || u.path) continue;
+      if (u.order?.type !== 'attackmove' && u.order?.type !== 'idle') continue;
+      if (Math.hypot(u.x - c.x, u.y - c.y) < 3) continue;
+      u.order = { type: 'attackmove', x: c.x, y: c.y };
+      this.setPath(u, c.x, c.y);
+    }
+  }
+
   // ---------- 胜负 ----------
   checkWinner() {
     for (const side of ['player', 'enemy']) {
@@ -1006,8 +1041,11 @@ export class World {
         this.updateMovement(e);
         if (e.order?.type === 'harvest') updateHarvester(this, e);
         else if (e.order?.type === 'capture') this.updateCapture(e);
-        else if (e.order?.type === 'attackmove' && !e.targetId && !e.path && dist(e.x, e.y, e.order.x, e.order.y) > 1.5) {
-          this.setPath(e, e.order.x, e.order.y);
+        else if (e.order?.type === 'attackmove' && !e.targetId && !e.path) {
+          // P0-1 孪生：已抵达目标（1.5 格内）无事可做 → 转 idle 警戒（索敌照常），不再永远挂着 attackmove；
+          // 未抵达 → 重寻路
+          if (dist(e.x, e.y, e.order.x, e.order.y) > 1.5) this.setPath(e, e.order.x, e.order.y);
+          else this.arriveAdvance(e);
         }
         else if (e.order?.type === 'patrol') this.updatePatrol(e);
         // hold/guard 每 tick 都要跑姿态判定：guard 的 8 格拴绳必须在追击路径存在时也生效，
@@ -1067,6 +1105,9 @@ export class World {
     if (this.strikeAlarm && --this.strikeAlarm.ttl <= 0) this.strikeAlarm = null;
     this.updateRepairPads();
     this.updateAutoRepair();
+    this.updateLastStand();
+    this.updateMopup('player');
+    this.updateMopup('enemy');
     if (this.tickCount % ECON.neutral.period === 0) this.updateNeutralIncome();
     for (const s of ['player', 'enemy']) {
       if (this.superCd[s] > 0) {
