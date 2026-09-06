@@ -185,8 +185,9 @@ export class World {
     }
     this.entities.delete(e.id);
     const fly = e.kind === 'unit' && UNITS[e.type]?.fly;
-    const r = e.kind === 'building' ? Math.max(e.w, e.h) * 0.8 : fly ? 1.1 : 0.6;
-    this.fx.push({ type: 'boom', x: e.x, y: e.y, r, ttl: 16, max: 16, alt: fly ? (e.alt ?? 2.2) : 0 });
+    const isNuke = e.kind === 'building' && e.type === 'npower'; // 核电站殉爆：核爆级特效
+    const r = e.kind === 'building' ? Math.max(e.w, e.h) * (isNuke ? 1.5 : 0.8) : fly ? 1.1 : 0.6;
+    this.fx.push({ type: 'boom', x: e.x, y: e.y, r, ttl: 16, max: 16, alt: fly ? (e.alt ?? 2.2) : 0, nuke: isNuke, shake: isNuke ? 1.2 : undefined });
     this.events.push({ type: 'boom', big: e.kind === 'building' || fly, x: e.x, y: e.y });
     // 地面载具留下燃烧残骸；空中单位（基洛夫）坠落爆燃（渲染层消费 alt）
     if (e.kind === 'unit' && !fly && !UNITS[e.type]?.inf) {

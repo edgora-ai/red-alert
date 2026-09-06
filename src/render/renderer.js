@@ -857,7 +857,18 @@ export class Renderer {
         if (!f._done) {
           f._done = true;
           const alt = f.alt || 0;
-          this.particles.explosion(f.x, f.y, f.r);
+          const inWater = this.world.tileAt(Math.floor(f.x), Math.floor(f.y)) === T.WATER;
+          this.particles.explosion(f.x, f.y, f.r, inWater);
+          if (f.nuke) {
+            // 核电站殉爆：辐射绿闪 + 第二道大冲击波环 + 放射性烟柱
+            this.particles.ring(f.x, f.y, 0.3, f.r * 3.2, 0xbfffb0, 0.7);
+            for (let i = 0; i < 10; i++) {
+              this.particles.spawn({
+                x: f.x, y: 0.5, z: f.y, vx: (Math.random() - 0.5) * 3, vy: 2 + Math.random() * 3, vz: (Math.random() - 0.5) * 3,
+                life: 0.8, size: 0.3, sizeEnd: 0.9, col0: 0xc8ffb0, col1: 0x2a5f2a, alpha: 0.85, grav: -1.5,
+              });
+            }
+          }
           if (alt) {
             // 空中爆炸（基洛夫坠落）：高空爆燃火球 + 坠落燃烧残骸雨
             this.particles.spawn({
@@ -882,7 +893,7 @@ export class Renderer {
             light.visible = true;
             light.userData.ttl = 0.3;
           }
-          this.addShake(f.shake ?? Math.min(0.55, f.r * 0.3));
+          this.addShake(f.shake ?? Math.min(0.55, f.r * (f.nuke ? 0.5 : 0.3)));
         }
       } else if (f.type === 'wreck') {
         // 燃烧残骸：一次性生成炭化车体 + 持续烟柱火舌 + 末期淡出

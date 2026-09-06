@@ -260,10 +260,21 @@ export class Particles {
   }
 
   // ---------- 预设组合 ----------
-  explosion(x, z, r = 0.6) {
-    // 序列帧火球（主角）+ 火舌粒子 + 浓烟 + 火花 + 冲击波环 + 焦土
+  explosion(x, z, r = 0.6, inWater = false) {
+    // 序列帧火球（主角）+ 闪光；水面爆炸换水花柱+涟漪，无火无焦土
     this.fireball(x, z, r * 1.5, 0.5 + r * 0.12);
-    this.spawn({ x, y: 0.45, z, life: 0.12, size: r * 2.2, sizeEnd: r * 3.2, col0: 0xfff6cc, col1: 0xff8a2a, alpha: 1 });
+    this.spawn({ x, y: 0.45, z, life: 0.12, size: r * 2.2, sizeEnd: r * 3.2, col0: inWater ? 0xe8f6ff : 0xfff6cc, col1: inWater ? 0x7fb8d8 : 0xff8a2a, alpha: 1 });
+    if (inWater) {
+      for (let i = 0; i < Math.round(10 + r * 10); i++) {
+        const a = Math.random() * Math.PI * 2, sp = (0.5 + Math.random() * 1.5) * r;
+        this.spawn({
+          x, y: 0.1, z, vx: Math.cos(a) * sp, vy: 2.2 + Math.random() * 2.5, vz: Math.sin(a) * sp,
+          life: 0.5 + Math.random() * 0.4, size: 0.1, sizeEnd: 0.3, col0: 0xdff2ff, col1: 0x6fa8c8, alpha: 0.95, grav: -7,
+        });
+      }
+      this.ring(x, z, 0.3, r * 2.8, 0xbfe4ff, 0.55);
+      return;
+    }
     const nFire = Math.round(9 + r * 9);
     for (let i = 0; i < nFire; i++) {
       const a = Math.random() * Math.PI * 2, sp = (0.8 + Math.random() * 2.6) * r;
