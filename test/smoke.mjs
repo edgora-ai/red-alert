@@ -632,5 +632,25 @@ check('天启坦克双联导弹可对空', drone.hp < drone.maxHp, `ghost hp ${M
     `kills ${kills9} -> ${world.stats.player.kills}`);
 }
 
+// —— 阶段23：v8 第十四轮审查回归（集火残血微操） ——
+{
+  const w7 = createSkirmish(7777);
+  // 先清场再布阵：地图种子地形有树/岩，出生吸附会把单位挪离预设距离
+  for (let ty = 38; ty <= 42; ty++)
+    for (let tx = 27; tx <= 36; tx++)
+      if (w7.inBounds(tx, ty)) { w7.tiles[w7.idx(tx, ty)] = TT.GRASS; w7.ore[w7.idx(tx, ty)] = 0; }
+  const shooter7 = w7.addUnit('player', 'cheetah', 30.5, 40.5);
+  shooter7.order = { type: 'hold', x: 30.5, y: 40.5 };
+  const healthy7 = w7.addUnit('enemy', 'tyrant', 33.5, 40.5); // 距离 3 满血
+  const wounded7 = w7.addUnit('enemy', 'tyrant', 34.5, 40.5); // 距离 4 残血
+  wounded7.hp = wounded7.maxHp * 0.2;
+  healthy7.order = { type: 'idle' }; healthy7.path = null;
+  wounded7.order = { type: 'idle' }; wounded7.path = null;
+  for (let i = 0; i < 12 && shooter7.targetId == null; i++) w7.tick();
+  check('索敌集火残血（更远的残血优先于满血）', shooter7.targetId === wounded7.id,
+    `target=${shooter7.targetId === wounded7.id ? 'wounded' : shooter7.targetId === healthy7.id ? 'healthy' : 'none'}`);
+  w7.killEntity(shooter7); w7.killEntity(healthy7); w7.killEntity(wounded7);
+}
+
 console.log(`\n${failures === 0 ? '全部通过 ✔' : failures + ' 项失败 ✘'}`);
 process.exit(failures === 0 ? 0 : 1);

@@ -113,7 +113,9 @@ function acquireLeashed(world, e, w, leash) {
     if (def?.stealth && !(t.cloak > 0) && dist(e.x, e.y, t.x, t.y) > ECON.cloak.near) continue;
     if (dist(ax, ay, t.x, t.y) > leash) continue;
     const d = dist(e.x, e.y, t.x, t.y);
-    if (d <= w.range && d < bestD) { bestD = d; best = t; }
+    // 集火微操：残血目标距离打 65 折——优先送走快死的
+    const score = d * (t.hp < t.maxHp * 0.35 ? 0.65 : 1);
+    if (d <= w.range && score < bestD) { bestD = score; best = t; }
   }
   return best;
 }
@@ -131,7 +133,9 @@ function acquireTarget(world, e, w, range) {
     // 光学迷彩：隐形单位只有近身（或现形倒计时中）才能被索敌
     if (def?.stealth && !(t.cloak > 0) && dist(e.x, e.y, t.x, t.y) > ECON.cloak.near) continue;
     const d = dist(e.x, e.y, t.x, t.y);
-    const score = isAir ? d * aaBias : d;
+    // 集火微操：残血目标（<35%）距离打 65 折——优先补刀，火力不浪费在满血肉盾上
+    const dmgBias = t.hp < t.maxHp * 0.35 ? 0.65 : 1;
+    const score = (isAir ? d * aaBias : d) * dmgBias;
     if (d <= range && score < bestD) { bestD = score; best = t; }
   }
   return best;

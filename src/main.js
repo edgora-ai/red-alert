@@ -46,9 +46,16 @@ try {
 // 开始界面：选难度 → 开战（同时解锁 WebAudio）
 const startEl = document.getElementById('start');
 const startBtn = document.getElementById('startBtn');
-document.querySelectorAll('.diff-btn').forEach(btn => {
+document.querySelectorAll('.diff-btn:not(.fund-btn)').forEach(btn => {
   btn.onclick = () => {
-    document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.diff-btn:not(.fund-btn)').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  };
+});
+// 初始资源选项（遭遇战开局）：双端同步生效
+document.querySelectorAll('.fund-btn').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.fund-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
   };
 });
@@ -56,9 +63,13 @@ startBtn.onclick = () => {
   try {
     sound?.unlock();
     // 难度在开局前选定：重建 Commander 应用难度参数
-    const diffSel = document.querySelector('.diff-btn.active')?.dataset.diff || 'normal';
+    const diffSel = document.querySelector('.diff-btn.active:not(.fund-btn)')?.dataset.diff || 'normal';
     if (diffSel !== diff) Object.assign(ai, new Commander(world, 'enemy', diffSel));
     game.diff = diffSel;
+    // 初始资源：标准 5000 / 富矿 10000（双端同步，保持对称博弈）
+    const fund = parseInt(document.querySelector('.fund-btn.active')?.dataset.fund || '5000', 10);
+    world.credits.player = fund;
+    world.credits.enemy = fund;
     if (ui) ui.el.diffBadge.textContent = `AI · ${ai.diff.name}`;
     startEl.classList.add('hidden');
     game.started = true;

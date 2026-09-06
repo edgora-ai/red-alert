@@ -615,13 +615,23 @@ export class Renderer {
           this.particles.chimney(p.x, p.y, p.z);
         }
       }
-      // 重伤建筑冒烟
-      if (e.kind === 'building' && e.hp < e.maxHp * 0.45 && (rec.dmgSmokeT ??= 0) <= 0) {
-        rec.dmgSmokeT = 0.18 + Math.random() * 0.2;
+      // 建筑战损分级（视觉读血量，不用盯血条）：66% 细烟 / 45% 浓烟 / 25% 火舌
+      if (e.kind === 'building' && e.hp < e.maxHp * 0.66 && (rec.dmgSmokeT ??= 0) <= 0) {
+        rec.dmgSmokeT = 0.2 + Math.random() * 0.2;
+        const hpR = e.hp / e.maxHp;
+        const heavy = hpR < 0.45;
         this.particles.spawn({
           layer: 'smoke', x: e.x + (Math.random() - 0.5) * e.w * 0.6, y: rec.topY * 0.8, z: e.y + (Math.random() - 0.5) * e.h * 0.6,
-          vy: 0.8, life: 1.1, size: 0.25, sizeEnd: 0.8, col0: 0x3c3a38, col1: 0x151312, alpha: 0.42, grav: -0.4,
+          vy: heavy ? 0.85 : 0.55, life: 1.0 + Math.random() * 0.3, size: 0.2, sizeEnd: heavy ? 0.85 : 0.55,
+          col0: heavy ? 0x3c3a38 : 0x6f6b66, col1: 0x151312, alpha: heavy ? 0.42 : 0.25, grav: -0.4,
         });
+        if (hpR < 0.25) {
+          this.particles.spawn({
+            x: e.x + (Math.random() - 0.5) * e.w * 0.5, y: 0.35, z: e.y + (Math.random() - 0.5) * e.h * 0.5,
+            vx: (Math.random() - 0.5) * 0.3, vy: 1.0 + Math.random() * 0.4, vz: (Math.random() - 0.5) * 0.3,
+            life: 0.26 + Math.random() * 0.14, size: 0.13, sizeEnd: 0.3, col0: 0xffa040, col1: 0xff3300, alpha: 0.8, grav: 0.5,
+          });
+        }
       }
       if (rec.dmgSmokeT !== undefined) rec.dmgSmokeT -= dt;
 
