@@ -135,10 +135,11 @@ export const MAP_TYPES = {
   plains:   { name: '开放平原', desc: '一马平川 · 正面会战' },
 };
 
-// 玩法模式（开局参数包：credits=初始资金 aiWaveMul=AI 波次节奏倍率 trickleMul=AI 补贴倍率）
+// 玩法模式（开局参数包：aiWaveMul=AI 波次节奏倍率 trickleMul=AI 补贴倍率；
+// 初始资金由「初始资源」选单统一控制）
 export const GAME_MODES = {
-  classic: { name: '经典歼灭', desc: '标准节奏', credits: 5000, aiWaveMul: 1, trickleMul: 1, neutralMul: 1 },
-  blitz:   { name: '闪电战', desc: '双倍节奏 · 快攻快守', credits: 8000, aiWaveMul: 0.5, trickleMul: 2, neutralMul: 1 },
-  standoff:{ name: '重装对决', desc: '开局泰坦 vs 天启', credits: 6000, aiWaveMul: 1.2, trickleMul: 1, neutralMul: 1, eliteStart: true },
-  neutral: { name: '中立争夺', desc: '补给站收入 ×3 · 占领奖金', credits: 6000, aiWaveMul: 1, trickleMul: 1, neutralMul: 3, captureBonus: 800 },
+  classic: { name: '经典歼灭', desc: '标准节奏', aiWaveMul: 1, trickleMul: 1, neutralMul: 1 },
+  blitz:   { name: '闪电战', desc: '双倍节奏 · 快攻快守', aiWaveMul: 0.5, trickleMul: 2, neutralMul: 1 },
+  standoff:{ name: '重装对决', desc: '开局泰坦 vs 天启', aiWaveMul: 1.2, trickleMul: 1, neutralMul: 1, eliteStart: true },
+  neutral: { name: '中立争夺', desc: '补给站收入 ×3 · 占领奖金', aiWaveMul: 1, trickleMul: 1, neutralMul: 3, captureBonus: 800 },
 };
