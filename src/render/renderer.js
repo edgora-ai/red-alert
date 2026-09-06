@@ -500,6 +500,17 @@ export class Renderer {
       const gy = FLY_Y[e.type] ? rec.baseY + Math.sin(this.animTime * 2.1 + e.id) * 0.09 : rec.baseY;
       rec.group.position.set(e.x, gy, e.y);
       if (e.kind === 'unit') rec.group.rotation.y = -e.dir;
+      // 建筑战损形变：33% 血以下结构歪斜+下沉（每栋倾斜方向固定，维修后平滑复原）
+      if (rec.kind === 'building') {
+        if (e.hp < e.maxHp * 0.33) {
+          const k = 1 - e.hp / (e.maxHp * 0.33);
+          rec.ruinTilt ??= (((e.id * 2654435761) >>> 16) % 100 / 100 - 0.5) * 0.12;
+          rec.group.rotation.z = rec.ruinTilt * k;
+          rec.group.position.y -= k * 0.08;
+        } else if (rec.group.rotation.z !== 0) {
+          rec.group.rotation.z *= 0.9;
+        }
+      }
 
       // 行走动画：机甲/步兵腿部摆动（hip/knee 关节）
       if (ud.legs && e.kind === 'unit') {
@@ -636,6 +647,16 @@ export class Renderer {
         }
       }
       if (rec.dmgSmokeT !== undefined) rec.dmgSmokeT -= dt;
+
+      // 重伤载具拖黑烟（战况可读性：残血坦克一路冒烟，不打血条也能读出血量）
+      if (e.kind === 'unit' && !UNITS[e.type]?.inf && !UNITS[e.type]?.fly && e.hp < e.maxHp * 0.35 && (rec.unitSmokeT ??= 0) <= 0) {
+        rec.unitSmokeT = 0.16 + Math.random() * 0.14;
+        this.particles.spawn({
+          layer: 'smoke', x: e.x, y: 0.45, z: e.y, vx: (Math.random() - 0.5) * 0.2, vy: 0.7 + Math.random() * 0.4, vz: (Math.random() - 0.5) * 0.2,
+          life: 0.8 + Math.random() * 0.4, size: 0.15, sizeEnd: 0.55, col0: 0x3a3733, col1: 0x191715, alpha: 0.35, grav: -0.3,
+        });
+      }
+      if (rec.unitSmokeT !== undefined) rec.unitSmokeT -= dt;
 
       // 受击闪白
       if (e.flash > 0) {
