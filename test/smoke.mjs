@@ -652,5 +652,31 @@ check('天启坦克双联导弹可对空', drone.hp < drone.maxHp, `ghost hp ${M
   w7.killEntity(shooter7); w7.killEntity(healthy7); w7.killEntity(wounded7);
 }
 
+// —— 阶段24：v8 第十六轮审查回归（AI 经济骚扰 / 多中立站分兵） ——
+{
+  const w8 = createSkirmish(8888);
+  const ai8 = new Commander(w8, 'enemy', 'normal');
+  const h1 = w8.addUnit('enemy', 'hunter', 40.5, 60.5);
+  const h2 = w8.addUnit('enemy', 'hunter', 41.5, 60.5);
+  h1.order = { type: 'idle' }; h2.order = { type: 'idle' };
+  const harv8 = w8.unitsOf('player').find(u => u.type === 'harvester');
+  ai8.harassCd = 0;
+  for (let i = 0; i < 16; i++) ai8.tick();
+  check('AI 经济骚扰：双猎手点名玩家矿车', h1.order?.type === 'attack' && h2.order?.type === 'attack'
+    && w8.entities.get(h1.targetId) === harv8,
+    `orders=${h1.order?.type}/${h2.order?.type}`);
+  w8.killEntity(h1); w8.killEntity(h2);
+}
+{
+  const w9 = createSkirmish(9999);
+  const ai9 = new Commander(w9, 'enemy', 'normal');
+  const ops = [...w9.entities.values()].filter(e => e.type === 'outpost');
+  ops[0].side = 'enemy'; // AI 已占其一
+  const eng = w9.addUnit('enemy', 'engineer', ops[1].x + 1, ops[1].y + 2);
+  for (let i = 0; i < 16; i++) ai9.tick();
+  check('AI 分兵占领第二座中立站（已占其一不再躺平）', eng.order?.type === 'capture',
+    `order=${eng.order?.type}`);
+}
+
 console.log(`\n${failures === 0 ? '全部通过 ✔' : failures + ' 项失败 ✘'}`);
 process.exit(failures === 0 ? 0 : 1);

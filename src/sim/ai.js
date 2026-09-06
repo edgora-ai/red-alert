@@ -24,6 +24,7 @@ export class Commander {
   tick() {
     if (++this.timer < 15) return; // 每 0.5s 决策一次（15 world tick）
     this.timer = 0;
+    this.decisionN = (this.decisionN ?? 0) + 1;
     const w = this.world;
     if (w.winner) return;
     // 难度运营补贴：每 2s 结算一次（= 每 4 次决策）
@@ -36,9 +37,23 @@ export class Commander {
     this.launchWaves();
     this.defendBase();
     this.dodgeSuper();
+    this.harassEconomy();
     this.tryCapture();
     this.research();
     this.fireSuper();
+  }
+
+  // 经济骚扰：抽 2 个空闲猎手猎杀玩家矿车（经典 RTS AI 的经济打击，60s 限频）
+  harassEconomy() {
+    if (this.harassCd > 0) { this.harassCd--; return; }
+    const w = this.world, s = this.side;
+    const harvs = w.unitsOf('player').filter(u => u.type === 'harvester');
+    if (!harvs.length) return;
+    const hunters = w.unitsOf(s).filter(u => u.type === 'hunter' && (!u.order || u.order.type === 'idle'));
+    if (hunters.length < 2) return;
+    const target = harvs[Math.floor(Math.random() * harvs.length)];
+    w.issueCommand(s, { type: 'attack', ids: hunters.slice(0, 2).map(u => u.id), targetId: target.id });
+    this.harassCd = 120; // 两次决策计数 = 60s
   }
 
   // 玩家轨道打击预警期：落点附近的我方部队立即疏散（预警 1.7s，站着吃一发 950 伤害太亏）
@@ -149,11 +164,12 @@ export class Commander {
       }
       w.issueCommand(s, { type: 'produce', item });
     }
-    if (barracks && barracks.queue.length < 1 && this.armyCounter % 2 === 0) {
+    if (barracks && barracks.queue.length < 1 && this.decisionN % 2 === 0) {
       w.issueCommand(s, { type: 'produce', item: this.armyCounter % 5 === 0 ? 'rocket' : 'rifle' });
     }
     // 场上有无主补给站且己方未占：补工程师
-    const wantOutpost = this.neutralOutposts().length && !this.neutralOutposts().some(b => b.side === s);
+    // 场上有无主补给站且己方未全占：补工程师（与 tryCapture 的分兵占领口径一致）
+    const wantOutpost = this.neutralOutposts().some(b => b.side !== s);
     if (wantOutpost && barracks && !barracks.queue.length
       && !w.unitsOf(s).some(u => UNITS[u.type]?.capture)) {
       w.issueCommand(s, { type: 'produce', item: 'engineer' });
@@ -164,14 +180,14 @@ export class Commander {
     return [...this.world.entities.values()].filter(e => e.kind === 'building' && !e.dead && e.type === 'outpost');
   }
 
-  // 派遣空闲工程师占领最近的中立补给站
+  // 派遣空闲工程师占领最近的无主补给站（已占领的不算——多座中立站分兵全占）
   tryCapture() {
     const w = this.world, s = this.side;
-    const outposts = this.neutralOutposts();
-    if (!outposts.length || outposts.some(b => b.side === s)) return;
+    const targets = this.neutralOutposts().filter(b => b.side !== s);
+    if (!targets.length) return;
     const engs = w.unitsOf(s).filter(u => UNITS[u.type]?.capture && u.order?.type !== 'capture');
     for (const u of engs) {
-      const tgt = outposts
+      const tgt = targets
         .map(b => ({ b, d: Math.hypot(b.x - u.x, b.y - u.y) }))
         .sort((a, c) => a.d - c.d)[0]?.b;
       if (tgt) w.issueCommand(s, { type: 'capture', ids: [u.id], targetId: tgt.id });
