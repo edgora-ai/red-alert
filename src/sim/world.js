@@ -841,6 +841,16 @@ export class World {
         }
       }
     }
+    // 敌方飞行单位首次进入视野：一次性防空预警（RA 式威胁播报，整个单位只报一次）
+    for (const e of this.entities.values()) {
+      if (e.side === 'player' || e.dead || e.kind !== 'unit' || !UNITS[e.type]?.fly) continue;
+      if (this.announcedFly?.has(e.id)) continue;
+      if (fog[this.idx(Math.floor(e.x), Math.floor(e.y))] !== 2) continue;
+      (this.announcedFly ??= new Set()).add(e.id);
+      this.messages.push({ side: 'player', text: `⚠ 侦测到敌方${UNITS[e.type].name}！部署防空火力！`, ttl: 180 });
+      this.events.push({ type: 'siren', x: e.x, y: e.y });
+      this.alerts.push({ x: e.x, y: e.y, ttl: 75, max: 75, side: 'player' });
+    }
   }
 
   // ---------- 胜负 ----------

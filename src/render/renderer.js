@@ -758,7 +758,8 @@ export class Renderer {
   // ---------- 弹道 ----------
   syncProjectiles() {
     const list = this.world.projectiles;
-    // 弹体 mesh 池（炮弹亮球；导弹有烟迹跟随）
+    // 弹体 mesh 池 + 按对象稳定映射：炮弹亮球；导弹有烟迹跟随。
+    // 若按下标映射，齐射中某发销毁（splice）会让余弹在池间瞬移
     if (!this.projPool) {
       this.projPool = [];
       const geo = new THREE.SphereGeometry(0.09, 8, 6);
@@ -769,21 +770,32 @@ export class Renderer {
         this.projPool.push(m);
       }
     }
-    this.projPool.forEach((m, i) => {
-      if (i < list.length) {
-        const p = list[i];
-        m.visible = true;
-        // 空投弹道：从飞行高度随进度降落到地面爆炸高度
-        const alt0 = p.alt0 ?? 0.35;
-        const k = Math.min(1, Math.max(0, 1 - Math.hypot(p.x - p.tx, p.y - p.ty) / (p.totalDist || 1)));
-        m.position.set(p.x, alt0 + (0.35 - alt0) * k, p.y);
-      } else m.visible = false;
-    });
+    this.projMeshMap ??= new Map();
+    const live = new Set(list);
+    for (const [p, m] of this.projMeshMap) {
+      if (!live.has(p)) { m.visible = false; this.projMeshMap.delete(p); }
+    }
+    const used = new Set(this.projMeshMap.values());
+    let pi = 0;
+    for (const p of list) {
+      if (!this.projMeshMap.has(p)) {
+        while (pi < this.projPool.length && used.has(this.projPool[pi])) pi++;
+        if (pi >= this.projPool.length) break; // 池耗尽：多余弹体不渲染（不崩）
+        used.add(this.projPool[pi]);
+        this.projMeshMap.set(p, this.projPool[pi]);
+      }
+      const m = this.projMeshMap.get(p);
+      m.visible = true;
+      // 空投弹道：从飞行高度随进度降落到地面爆炸高度
+      const alt0 = p.alt0 ?? 0.35;
+      const k = Math.min(1, Math.max(0, 1 - Math.hypot(p.x - p.tx, p.y - p.ty) / (p.totalDist || 1)));
+      m.position.set(p.x, alt0 + (0.35 - alt0) * k, p.y);
+    }
 
     // 导弹烟迹：按位移补插粒子
-    const live = new Set();
+    const trailLive = new Set();
     for (const p of list) {
-      live.add(p);
+      trailLive.add(p);
       const last = this.trailMap.get(p);
       if (last && this.frameDt > 0) {
         const d = Math.hypot(p.x - last.x, p.y - last.z);
@@ -796,7 +808,7 @@ export class Renderer {
         this.trailMap.set(p, { x: p.x, z: p.y });
       }
     }
-    for (const k of this.trailMap.keys()) if (!live.has(k)) this.trailMap.delete(k);
+    for (const k of this.trailMap.keys()) if (!trailLive.has(k)) this.trailMap.delete(k);
   }
 
   // ---------- 特效（sim fx → 粒子/光束网格/灯光/震屏） ----------

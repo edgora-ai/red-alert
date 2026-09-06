@@ -606,5 +606,19 @@ check('天启坦克双联导弹可对空', drone.hp < drone.maxHp, `ghost hp ${M
   world.killEntity(lp); world.killEntity(lt);
 }
 
+// —— 阶段21：v8 第十一轮审查回归（敌方飞行单位首次视野预警） ——
+{
+  const w6 = createSkirmish(666);
+  const k9 = w6.addUnit('enemy', 'kirov', 13.5, 80.5); // 玩家基地初始坦克正上（视野内）
+  w6.updateFog();
+  check('敌方基洛夫首次进入视野触发防空预警', w6.messages.some(m => m.text.includes('基洛夫'))
+    && w6.announcedFly?.has(k9.id)
+    && w6.alerts.some(a => a.side === 'player'));
+  w6.messages.length = 0;
+  w6.alerts.length = 0;
+  w6.updateFog(); // 再刷新不重复播报
+  check('同一目标只播报一次', !w6.messages.some(m => m.text.includes('基洛夫')));
+}
+
 console.log(`\n${failures === 0 ? '全部通过 ✔' : failures + ' 项失败 ✘'}`);
 process.exit(failures === 0 ? 0 : 1);
