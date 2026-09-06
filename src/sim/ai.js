@@ -73,7 +73,9 @@ export class Commander {
   }
 
   // 经济骚扰：抽 2 个空闲猎手猎杀玩家矿车（经典 RTS AI 的经济打击，60s 限频）
+  // 轮45：简单难度关闭（新手矿车被偷即连锁崩盘，与“经济迟缓”新手保护定位冲突）
   harassEconomy() {
+    if ((this.diff.incomeMul ?? 1) < 0.8) return;
     if (this.harassCd > 0) { this.harassCd--; return; }
     const w = this.world, s = this.side;
     const harvs = w.unitsOf('player').filter(u => u.type === 'harvester');
@@ -133,6 +135,8 @@ export class Commander {
       return t;
     }
     // 序列走完后：钱多先扩生产线（多兵营/战车工厂并行加速 +35%/座），再补防御
+    // 轮45：简单难度产能封顶（不再扩第二工厂/兵营/精炼厂）——单线对等，新手用正确编成能赢
+    if ((this.diff.incomeMul ?? 1) < 0.8) return owned.filter(x => x === 'laser').length < 2 ? 'laser' : null;
     if (w.credits[s] > 4500 && owned.filter(x => x === 'factory').length < 2) return 'factory';
     if (w.credits[s] > 3500 && owned.filter(x => x === 'barracks').length < 2) return 'barracks';
     if (w.credits[s] > 3000 && owned.filter(x => x === 'refinery').length < 2) return 'refinery';
@@ -193,7 +197,10 @@ export class Commander {
       }
       w.issueCommand(s, { type: 'produce', item });
     }
-    if (barracks && barracks.queue.length < 1 && this.decisionN % 2 === 0) {
+    // 轮45：简单难度步兵限频（每4次决策=2s补一个，与“经济迟缓”定位一致；此前每秒一个步兵海，
+    // 新手坦克hold死守会被动淹死）。普通/困难不变
+    const infEvery = (this.diff.incomeMul ?? 1) < 0.8 ? 4 : 2;
+    if (barracks && barracks.queue.length < 1 && this.decisionN % infEvery === 0) {
       w.issueCommand(s, { type: 'produce', item: this.armyCounter % 5 === 0 ? 'rocket' : 'rifle' });
     }
     // 场上有无主补给站且己方未占：补工程师

@@ -1125,5 +1125,29 @@ check('阵营门：玩家无法生产空天航母、AI 无法生产浮空炮艇'
   check('轮44战时配给不养挂机（有矿车不触发）', wE.credits.player === cE, `$${cE}->${Math.round(wE.credits.player)}`);
 }
 
+// —— 阶段33：轮45 新手保护套餐（easy trickle/骚扰/产能封顶） ——
+{
+  const { Commander: C45 } = await import('../src/sim/ai.js');
+  const { DIFFS: D45 } = await import('../src/config.js');
+  check('轮45简单trickle减半（新手容错）', D45.easy.trickle === 2, `trickle=${D45.easy.trickle}`);
+  // 骚扰关闭：easy Commander 的 harassEconomy 直接返回（猎手不点名矿车）
+  const wF = createSkirmish(454545);
+  const aiF = new C45(wF, 'enemy', 'easy');
+  const h1 = wF.addUnit('enemy', 'hunter', 40.5, 60.5);
+  const h2 = wF.addUnit('enemy', 'hunter', 41.5, 60.5);
+  h1.order = { type: 'idle' }; h2.order = { type: 'idle' };
+  aiF.harassCd = 0;
+  for (let i = 0; i < 16; i++) aiF.tick();
+  check('轮45简单关闭经济骚扰（矿车不被猎手点名）', h1.order?.type === 'idle' && h2.order?.type === 'idle',
+    `orders=${h1.order?.type}/${h2.order?.type}`);
+  // 产能封顶：easy 序列走完后不再扩第二工厂（只补激光塔或 null）
+  const wG = createSkirmish(464646);
+  const aiG = new C45(wG, 'enemy', 'easy');
+  aiG.bi = 999; // 序列走完
+  wG.credits.enemy = 99999;
+  const nb = aiG.nextBuilding();
+  check('轮45简单产能封顶（不扩第二工厂）', nb !== 'factory' && nb !== 'barracks' && nb !== 'refinery', `next=${nb}`);
+}
+
 console.log(`\n${failures === 0 ? '全部通过 ✔' : failures + ' 项失败 ✘'}`);
 process.exit(failures === 0 ? 0 : 1);

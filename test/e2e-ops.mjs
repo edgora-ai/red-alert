@@ -65,9 +65,18 @@ for (const map of MAPS) {
           if (t % 300 === 0) {
             defend();
             const fac2 = w.buildingsOf('player').find(b => b.type === 'factory');
-            if (fac2 && fac2.queue.length < 2) w.issueCommand('player', { type: 'produce', item: 'prism' });
-            const army = w.unitsOf('player').filter(u => u.weapon && u.type !== 'harvester' && u.order?.type !== 'attackmove');
-            if (army.length >= 8) {
+            if (fac2 && fac2.queue.length < 2) {
+              const harvs = w.unitsOf('player').filter(u => u.type === 'harvester').length;
+              w.issueCommand('player', { type: 'produce', item: harvs < 2 ? 'harvester' : 'cheetah' });
+            }
+            // 护矿：2辆 guard 拴矿车（轮45：无护矿矿车被偷是脚本连败主因）
+            const harvsE = w.unitsOf('player').filter(u => u.type === 'harvester');
+            const tanks = w.unitsOf('player').filter(u => u.type === 'cheetah' && (!u.order || u.order.type === 'idle' || u.order.type === 'hold'));
+            if (harvsE.length && tanks.length >= 4) {
+              for (const g of tanks.slice(0, 2)) { g.order = { type: 'guard', x: harvsE[0].x, y: harvsE[0].y }; g.path = null; g.targetId = null; }
+            }
+            const army = w.unitsOf('player').filter(u => u.weapon && u.type !== 'harvester' && u.order?.type !== 'attackmove' && u.order?.type !== 'guard');
+            if (army.length >= 10) {
               const ey = w.buildingsOf('enemy').find(b => b.type === 'yard') || w.buildingsOf('enemy')[0];
               if (ey) { w.issueCommand('player', { type: 'attackmove', ids: army.map(u => u.id), x: ey.x, y: ey.y }); waves++; }
             }
