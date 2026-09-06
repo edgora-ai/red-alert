@@ -319,8 +319,9 @@ export class Sound {
     this.noise({ dur: 0.25, type: 'highpass', freq: 5000, gain: 0.08, delay: 0.1 });
   }
   klaxon() {
+    // 受击警报是最重要的提醒音：双音加大音量 + 高低交替更刺耳
     for (let i = 0; i < 3; i++) {
-      this.tone({ freq: i % 2 ? 440 : 587, dur: 0.16, type: 'square', gain: 0.09, delay: i * 0.17, vary: false, lp: 1800 });
+      this.tone({ freq: i % 2 ? 466 : 622, dur: 0.16, type: 'square', gain: 0.13, delay: i * 0.17, vary: false, lp: 2200 });
     }
   }
   // 超级武器：天顶充能爬升（预警期）

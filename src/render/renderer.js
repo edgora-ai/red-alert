@@ -93,7 +93,7 @@ export class Renderer {
     this.buildDeco();
     this.buildGhost();
 
-    this.particles = new Particles(this.scene);
+    this.particles = new Particles(this.scene, this.lowfx ? 0.45 : 1); // 低配：粒子预算 45% + 环境粒子抽稀
     this.particles.setCamera(this.cam3);
     this.postfx = new PostFX(this.renderer, lowfx);
 

@@ -579,5 +579,32 @@ check('天启坦克双联导弹可对空', drone.hp < drone.maxHp, `ghost hp ${M
   world.killEntity(edge);
 }
 
+// —— 阶段20：v8 第九轮审查回归（阵营专属科技 / 武器专属火力） ——
+{
+  check('阵营门：玩家无法研发磁暴过载、AI 无法研发聚焦透镜',
+    world.canProduce('player', 'overload').reason === '阵营限定'
+    && world.canProduce('enemy', 'lens').reason === '阵营限定');
+  // 研发聚焦透镜 → 光棱一跳伤害恰好 62×1.25=77.5（重甲 1.0），普通坦克武器不吃加成
+  world.credits.player = 20000;
+  world.issueCommand('player', { type: 'produce', item: 'lens' });
+  for (let i = 0; i < 1500 && !world.upgrades.player.owned.has('lens'); i++) world.tick();
+  check('聚焦透镜研发完成（wf 表登记）', world.upgrades.player.owned.has('lens')
+    && world.upgrades.player.wf?.prismW === 1.25
+    && world.upgrades.player.wf?.teslaW === undefined,
+    `prismW=${world.upgrades.player.wf?.prismW}`);
+  const lsp = freeSpotN(58, 40, 1);
+  const lp = world.addUnit('player', 'prism', lsp.tx + 0.5, lsp.ty + 0.5);
+  lp.order = { type: 'hold', x: lp.x, y: lp.y };
+  const lt = world.addUnit('enemy', 'tyrant', lsp.tx + 3.5, lsp.ty + 0.5);
+  lt.order = { type: 'hold', x: lt.x, y: lt.y };
+  const lhp0 = lt.hp;
+  for (let i = 0; i < 200 && lt.hp >= lhp0; i++) world.tick();
+  const dealt = lhp0 - lt.hp;
+  const expect = 62 * world.upgrades.player.fire * world.upgrades.player.wf.prismW; // 全局火力 × 武器专属
+  check('聚焦透镜光棱伤害 +25% 数值精确', Math.abs(dealt - expect) < 1.5,
+    `dealt=${dealt.toFixed(1)} expect=${expect.toFixed(1)}`);
+  world.killEntity(lp); world.killEntity(lt);
+}
+
 console.log(`\n${failures === 0 ? '全部通过 ✔' : failures + ' 项失败 ✘'}`);
 process.exit(failures === 0 ? 0 : 1);

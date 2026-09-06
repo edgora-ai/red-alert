@@ -111,6 +111,7 @@ void main() {
 class Layer {
   constructor(scene, max, blending, map, renderOrder) {
     this.max = max;
+    this.wi = 0; // 满载环形覆写指针
     this.parts = [];
     this.pos = new Float32Array(max * 3);
     this.col = new Float32Array(max * 3);
@@ -139,9 +140,11 @@ class Layer {
 }
 
 export class Particles {
-  constructor(scene) {
-    this.add = new Layer(scene, 2400, THREE.AdditiveBlending, circleTex(0.35), 8);
-    this.smoke = new Layer(scene, 1100, THREE.NormalBlending, circleTex(0.15), 7);
+  // budget：粒子总预算系数（?lowfx 弱机降档），环境粒子（尘/烟迹/烟囱）按比例抽稀
+  constructor(scene, budget = 1) {
+    this.budget = budget;
+    this.add = new Layer(scene, Math.max(400, Math.round(2400 * budget)), THREE.AdditiveBlending, circleTex(0.35), 8);
+    this.smoke = new Layer(scene, Math.max(180, Math.round(1100 * budget)), THREE.NormalBlending, circleTex(0.15), 7);
     this.decalTex = scorchTex();
     this.decals = [];
     this.decalI = 0;
@@ -214,8 +217,7 @@ export class Particles {
 
   spawn(o) {
     const layer = o.layer === 'smoke' ? this.smoke : this.add;
-    if (layer.parts.length >= layer.max) layer.parts.shift();
-    layer.parts.push({
+    const p = {
       x: o.x, y: o.y ?? 0.3, z: o.z,
       vx: o.vx || 0, vy: o.vy || 0, vz: o.vz || 0,
       life: o.life, max: o.life,
@@ -223,7 +225,14 @@ export class Particles {
       c0: o.col0, c1: o.col1 ?? o.col0,
       a: o.alpha ?? 1,
       grav: o.grav || 0, drag: o.drag || 0,
-    });
+    };
+    // 预算满载时环形覆写最老粒子：shift 是 O(n)，满载风暴时每帧几十次 shift 会顶成尖刺
+    if (layer.parts.length >= layer.max) {
+      layer.parts[layer.wi % layer.max] = p;
+      layer.wi = (layer.wi + 1) % layer.max;
+    } else {
+      layer.parts.push(p);
+    }
   }
 
   ring(x, z, r0, r1, color, life = 0.45) {
@@ -312,6 +321,7 @@ export class Particles {
   }
 
   trail(x, z) {
+    if (this.budget < 1 && Math.random() > this.budget) return; // 低配抽稀环境粒子
     this.spawn({
       layer: 'smoke', x, y: 0.3 + Math.random() * 0.15, z,
       vx: (Math.random() - 0.5) * 0.3, vy: 0.25 + Math.random() * 0.3, vz: (Math.random() - 0.5) * 0.3,
@@ -321,6 +331,7 @@ export class Particles {
   }
 
   dust(x, z) {
+    if (this.budget < 1 && Math.random() > this.budget) return; // 低配抽稀环境粒子
     this.spawn({
       layer: 'smoke', x, y: 0.1, z,
       vx: (Math.random() - 0.5) * 0.4, vy: 0.3 + Math.random() * 0.3, vz: (Math.random() - 0.5) * 0.4,
@@ -342,6 +353,7 @@ export class Particles {
   }
 
   chimney(x, y, z) {
+    if (this.budget < 1 && Math.random() > this.budget) return; // 低配抽稀环境粒子
     this.spawn({
       layer: 'smoke', x, y, z,
       vx: 0.25 + Math.random() * 0.2, vy: 0.55 + Math.random() * 0.3, vz: (Math.random() - 0.5) * 0.2,

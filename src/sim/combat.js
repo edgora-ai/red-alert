@@ -162,7 +162,7 @@ function fireOne(world, e, w, target, off = 0) {
     });
   }
   const ups = world.upgrades?.[e.side];
-  const dmg = w.dmg * (e.dmgMul || 1) * (ups?.fire || 1); // 老兵 + 科技火力加成
+  const dmg = w.dmg * (e.dmgMul || 1) * (ups?.fire || 1) * (ups?.wf?.[e.weapon] || 1); // 老兵 + 全军火力 + 武器专属火力
   if (w.projSpeed <= 0) {
     // 即时命中：激光/粒子光束/子弹
     const energy = w.dtype === 'energy';
@@ -182,7 +182,7 @@ function fireOne(world, e, w, target, off = 0) {
     world.projectiles.push({
       x: e.x, y: e.y + off, targetId: target.id, tx: target.x, ty: target.y,
       speed: w.projSpeed, weapon: e.weapon, side: e.side, srcId: e.id,
-      dmgMul: (e.dmgMul || 1) * (ups?.fire || 1),
+      dmgMul: (e.dmgMul || 1) * (ups?.fire || 1) * (ups?.wf?.[e.weapon] || 1),
       homing: w.dtype === 'missile',
       // 空投弹道（基洛夫）：从飞行高度抛下，渲染层按进度插值高度
       alt0: world.unitDef(e)?.fly ? 2.2 : 0.35,

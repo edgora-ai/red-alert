@@ -10,7 +10,7 @@ const TABS = {
   buildings: () => BUILDINGS.yard.produces.filter(t => !BUILDINGS[t].side || BUILDINGS[t].side === 'player'),
   infantry: () => BUILDINGS.barracks.produces,
   vehicles: () => BUILDINGS.factory.produces.filter(t => UNITS[t].side !== 'enemy'),
-  tech: () => Object.keys(UPGRADES),
+  tech: () => Object.keys(UPGRADES).filter(t => !UPGRADES[t].side || UPGRADES[t].side === 'player'),
 };
 const ARMOR_NAMES = { light: '轻甲', heavy: '重甲', air: '空中' };
 
@@ -127,6 +127,7 @@ export class UI {
     if (UPGRADES[item]) {
       rows.push(def.desc);
       rows.push('研发后全军永久生效');
+      if (def.side) rows.push(`<span class="tt-sub">${def.side === 'player' ? '蓝军专属科技' : '红军专属科技'}</span>`);
     } else if (UNITS[item]) {
       rows.push(`耐久 ${def.hp} · ${ARMOR_NAMES[def.armor] || def.armor} · 速度 ${def.speed}`);
       if (w) {

@@ -75,7 +75,7 @@ export const BUILDINGS = {
   refinery: { name: '矿石精炼厂',   cost: 1800, buildTime: 30, w: 3, h: 2, hp: 1000, power: -40,  sight: 5, grants: 'harvester', refinery: true },
   barracks: { name: '兵营',         cost: 500,  buildTime: 10, w: 2, h: 2, hp: 750,  power: -20,  sight: 5, produces: ['rifle', 'rocket', 'engineer'] },
   factory:  { name: '战车工厂',     cost: 1800, buildTime: 32, w: 3, h: 3, hp: 1100, power: -30,  sight: 5, prereq: ['barracks'], produces: ['harvester', 'cheetah', 'tyrant', 'hunter', 'longsword', 'aurora', 'ghost', 'mcv', 'titan', 'prism', 'mirage', 'kirov', 'apoc'] },
-  radar:    { name: '雷达站',       cost: 1200, buildTime: 20, w: 2, h: 2, hp: 850,  power: -50,  sight: 10, prereq: ['factory'], produces: ['ap', 'composite', 'engine', 'mining', 'super'] },
+  radar:    { name: '雷达站',       cost: 1200, buildTime: 20, w: 2, h: 2, hp: 850,  power: -50,  sight: 10, prereq: ['factory'], produces: ['ap', 'composite', 'engine', 'mining', 'super', 'lens', 'overload'] },
   laser:    { name: '激光防御塔',   cost: 800,  buildTime: 14, w: 1, h: 1, hp: 550,  power: -30,  sight: 7, weapon: 'laserT', defense: true },
   sam:      { name: '防空导弹阵地', cost: 700,  buildTime: 12, w: 1, h: 1, hp: 500,  power: -20,  sight: 9, weapon: 'samW', defense: true },
   railgun:  { name: '电磁轨道炮塔', cost: 1400, buildTime: 24, w: 1, h: 1, hp: 650,  power: -60,  sight: 8, weapon: 'railW', defense: true, prereq: ['radar'] },
@@ -85,12 +85,16 @@ export const BUILDINGS = {
 };
 
 // 全局科技升级：雷达站研发，一次购买全军永久生效（fire=火力倍率 armor=承伤倍率 speed=机动倍率 mine=采矿倍率）
+// wfire=武器专属火力（affects 列出生效武器）；side=阵营限定科技
 export const UPGRADES = {
   ap:        { name: '精准弹药',   cost: 1500, buildTime: 30, producer: 'radar', effect: 'fire',  value: 1.2,  desc: '全军火力 +20%' },
   composite: { name: '复合装甲',   cost: 1800, buildTime: 35, producer: 'radar', prereq: ['ap'], effect: 'armor', value: 1 / 1.2, desc: '全军承受伤害 -17%' },
   engine:    { name: '引擎强化',   cost: 1200, buildTime: 25, producer: 'radar', effect: 'speed', value: 1.25, desc: '全军机动 +25%' },
   mining:    { name: '采矿优化',   cost: 1500, buildTime: 30, producer: 'radar', prereq: ['refinery'], effect: 'mine', value: 1.3, desc: '采矿效率 +30%' },
   super:     { name: '轨道打击授权', cost: 2500, buildTime: 45, producer: 'radar', prereq: ['npower'], effect: 'super', desc: '解锁超级武器「轨道动能炮」（V 键 / 侧栏按钮，180s 冷却）' },
+  // —— 阵营专属科技（对称克制的打法深度）——
+  lens:      { name: '聚焦透镜',   cost: 900,  buildTime: 30, producer: 'radar', prereq: ['npower'], side: 'player', effect: 'wfire', value: 1.25, affects: ['prismW', 'beam', 'mirageW'], desc: '光棱/粒子束/幻影武器伤害 +25%' },
+  overload:  { name: '磁暴过载',   cost: 900,  buildTime: 30, producer: 'radar', prereq: ['npower'], side: 'enemy', effect: 'wfire', value: 1.25, affects: ['teslaW'], desc: '磁暴线圈伤害 +25%' },
 };
 
 export const ECON = {

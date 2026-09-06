@@ -30,10 +30,10 @@ export class World {
       player: { kills: 0, lost: 0, built: 0, spent: 0 },
       enemy: { kills: 0, lost: 0, built: 0, spent: 0 },
     };
-    // 全局科技加成（fire/armor/speed/mine 倍率，owned=已研发集合）
+    // 全局科技加成（fire/armor/speed/mine 倍率，owned=已研发集合，wf=武器专属火力）
     this.upgrades = {
-      player: { fire: 1, armor: 1, speed: 1, mine: 1, owned: new Set() },
-      enemy: { fire: 1, armor: 1, speed: 1, mine: 1, owned: new Set() },
+      player: { fire: 1, armor: 1, speed: 1, mine: 1, owned: new Set(), wf: {} },
+      enemy: { fire: 1, armor: 1, speed: 1, mine: 1, owned: new Set(), wf: {} },
     };
     this.tickCount = 0;
     this.winner = null;
@@ -761,9 +761,14 @@ export class World {
     if (b.progress < total) return;
 
     if (UPGRADES[item]) {
-      // 科技研发完成：全局加成生效（超武授权走 owned 集合，无倍率）
+      // 科技研发完成：全局加成生效（超武授权走 owned 集合，wfire 按武器键入 wf 表）
       const up = UPGRADES[item];
-      if (up.effect !== 'super') this.upgrades[b.side][up.effect] = up.value;
+      if (up.effect === 'wfire') {
+        const wf = this.upgrades[b.side].wf;
+        for (const wk of up.affects) wf[wk] = up.value;
+      } else if (up.effect !== 'super') {
+        this.upgrades[b.side][up.effect] = up.value;
+      }
       this.upgrades[b.side].owned.add(item);
       b.queue.shift(); b.progress = 0;
       if (b.side === 'player') {

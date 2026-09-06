@@ -196,7 +196,7 @@ export class Commander {
     if (!radar || radar.queue.length) return;
     const owned = w.upgrades[s].owned;
     const order = this.diff.incomeMul > 1.2
-      ? ['ap', 'mining', 'super', 'composite', 'engine']
+      ? ['ap', 'mining', 'super', 'composite', 'engine', 'overload']
       : ['mining', 'ap'];
     for (const id of order) {
       if (owned.has(id)) continue;
