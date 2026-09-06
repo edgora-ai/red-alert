@@ -1052,8 +1052,18 @@ export function createSkirmish(seed = 20260801, mapType = 'standard') {
 export function applyEliteStart(world) {
   const py = world.buildingsOf('player').find(b => b.type === 'yard');
   const ey = world.buildingsOf('enemy').find(b => b.type === 'yard');
-  if (py) world.spawnUnitNear('player', 'titan', py);
-  if (ey) world.spawnUnitNear('enemy', 'apoc', ey);
+  const spawn = (side, type, yard) => {
+    if (!yard) return null;
+    let u = world.spawnUnitNear(side, type, yard);
+    if (!u) {
+      // 基地周边拥挤（重开/快进场景）兜底：更大半径找空位
+      const alt = nearestOpen(world, Math.floor(yard.x), Math.floor(yard.y), 10);
+      if (alt) u = world.addUnit(side, type, alt.x + 0.5, alt.y + 0.5);
+    }
+    return u;
+  };
+  spawn('player', 'titan', py);
+  spawn('enemy', 'apoc', ey);
 }
 
 function blob(w, rng, cx, cy, r, tile) {
