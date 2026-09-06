@@ -1238,6 +1238,27 @@ check('阵营门：玩家无法生产空天航母、AI 无法生产浮空炮艇'
     `apoc=${apocM.dead ? 'dead' : Math.round(apocM.hp)} titan=${titanM.dead ? 'dead' : Math.round(titanM.hp)}`);
 }
 
+// —— 阶段38：轮53 AI 补充塔海封顶（与序列内口径一致） ——
+{
+  const { Commander: C53 } = await import('../src/sim/ai.js');
+  // 序列走完+钱多+激光已有2座 → 不再补激光（此前无限，11分钟10+塔海）
+  const wN = createSkirmish(535353);
+  const aiN = new C53(wN, 'enemy', 'normal');
+  const eyN = wN.buildingsOf('enemy').find(b => b.type === 'yard');
+  wN.addBuilding('enemy', 'factory', eyN.tx + 4, eyN.ty);
+  wN.addBuilding('enemy', 'barracks', eyN.tx - 3, eyN.ty);
+  wN.addBuilding('enemy', 'refinery', eyN.tx, eyN.ty - 4);
+  wN.addBuilding('enemy', 'factory', eyN.tx + 8, eyN.ty);
+  wN.addBuilding('enemy', 'barracks', eyN.tx - 6, eyN.ty);
+  wN.addBuilding('enemy', 'refinery', eyN.tx, eyN.ty - 8);
+  wN.addBuilding('enemy', 'laser', 60, 60);
+  wN.addBuilding('enemy', 'laser', 62, 60);
+  aiN.bi = 999; // 序列走完
+  wN.credits.enemy = 99999;
+  const nbN = aiN.nextBuilding();
+  check('轮53补充塔海封顶（激光2座不再补）', nbN !== 'laser', `next=${nbN}`);
+}
+
 // —— 阶段34：轮46 接线验证回归（选单互斥/读取隔离/DOM-CSS对齐） ——
 {
   const { readFileSync } = await import('node:fs');

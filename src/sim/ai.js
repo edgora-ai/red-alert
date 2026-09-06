@@ -143,7 +143,9 @@ export class Commander {
     if (w.credits[s] > 4500 && owned.filter(x => x === 'factory').length < 2) return 'factory';
     if (w.credits[s] > 3500 && owned.filter(x => x === 'barracks').length < 2) return 'barracks';
     if (w.credits[s] > 3000 && owned.filter(x => x === 'refinery').length < 2) return 'refinery';
-    if (this.world.credits[s] > 3000) return 'laser';
+    // 轮53：补充激光塔同样限 2 座（与序列内口径一致；此前无限，11 分钟刷出 10+ 塔海，
+    // 玩家 10 辆一波撞塔海白送，长局变拆塔模拟器）
+    if (this.world.credits[s] > 3000 && owned.filter(x => x === 'laser').length < 2) return 'laser';
     return null;
   }
 
