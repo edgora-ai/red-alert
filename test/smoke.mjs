@@ -779,5 +779,35 @@ check('天启坦克双联导弹可对空', drone.hp < drone.maxHp, `ghost hp ${M
   world.killEntity(pv);
 }
 
+// —— 阶段28：v9 第二轮审查回归（建筑挂机维修 / 取消订单联动撤放置） ——
+{
+  // 挂机维修：受损建筑 R 开关后回血+扣费，修满自动停（放基地旁安全区，兼容随机地图）
+  world.credits.player = 8000;
+  const yard28 = world.buildingsOf('player').find(b => b.type === 'yard');
+  const rsp28 = freeSpotN(yard28.tx + 13, yard28.ty - 8, 2);
+  const pw28 = world.addBuilding('player', 'power', rsp28.tx, rsp28.ty);
+  pw28.hp = pw28.maxHp * 0.4;
+  world.issueCommand('player', { type: 'repairBuilding', id: pw28.id });
+  check('建筑挂机维修开关生效', pw28.repairSelf === true);
+  const hp28 = pw28.hp;
+  for (let i = 0; i < 1600 && pw28.hp < pw28.maxHp; i++) world.tick();
+  check('挂机维修修满（$0.5/HP 同修理厂速率）', pw28.hp >= pw28.maxHp && pw28.hp > hp28,
+    `hp ${Math.round(hp28)} -> ${Math.round(pw28.hp)}/${pw28.maxHp}`);
+  world.issueCommand('player', { type: 'repairBuilding', id: pw28.id });
+  check('修满后再按关闭维修', pw28.repairSelf === false);
+  world.killEntity(pw28);
+}
+{
+  // 取消生产订单联动撤放置：堵住"退款后免费放置"漏洞
+  world.credits.player = 9000;
+  world.issueCommand('player', { type: 'produce', item: 'barracks' });
+  for (let i = 0; i < 900 && world.sides.player.placing !== 'barracks'; i++) world.tick();
+  const placingReady = world.sides.player.placing === 'barracks';
+  world.issueCommand('player', { type: 'cancelProduce', item: 'barracks' });
+  check('取消订单联动撤除放置状态（堵免费放置漏洞）', placingReady
+    && world.sides.player.placing !== 'barracks',
+    `placingReady=${placingReady} placingNow=${world.sides.player.placing}`);
+}
+
 console.log(`\n${failures === 0 ? '全部通过 ✔' : failures + ' 项失败 ✘'}`);
 process.exit(failures === 0 ? 0 : 1);

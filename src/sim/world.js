@@ -233,6 +233,7 @@ export class World {
       case 'stop': return this.cmdStop(side, cmd.ids);
       case 'rally': return this.cmdRally(side, cmd.id, cmd.x, cmd.y);
       case 'sell': return this.cmdSell(side, cmd.id);
+      case 'repairBuilding': return this.cmdRepairBuilding(side, cmd.id);
       case 'superstrike': return this.cmdSuper(side, cmd.x, cmd.y);
     }
   }
@@ -284,6 +285,8 @@ export class World {
     const i = b.queue.lastIndexOf(item);
     b.queue.splice(i, 1);
     if (i === 0) b.progress = 0;
+    // 若该建筑已就绪等待放置，取消订单必须同时撤掉放置状态——否则退款后还能免费放置
+    if (this.sides[side].placing === item) this.sides[side].placing = null;
     const def = UNITS[item] || BUILDINGS[item] || UPGRADES[item];
     this.credits[side] += def.cost;
     this.events.push({ type: 'select' });
@@ -521,6 +524,15 @@ export class World {
   cmdRally(side, id, x, y) {
     const b = this.entities.get(id);
     if (b && b.kind === 'building' && b.side === side) b.rally = { x, y };
+  }
+
+  // 建筑挂机维修开关：按修理厂同价自修（$0.5/HP），R 键切换
+  cmdRepairBuilding(side, id) {
+    const b = this.entities.get(id);
+    if (!b || b.kind !== 'building' || b.side !== side || b.dead) return false;
+    if (b.hp >= b.maxHp && !b.repairSelf) return false;
+    b.repairSelf = !b.repairSelf;
+    return true;
   }
 
   cmdSell(side, id) {
@@ -911,6 +923,15 @@ export class World {
       } else {
         this.updateProduction(e);
         if (e.weapon) updateCombat(this, e);
+        // 挂机维修：按修理厂同价自修（每 tick 10HP/s ÷ 30，钱不够自动停）
+        if (e.repairSelf && e.hp < e.maxHp) {
+          const heal = Math.min(ECON.repair.rate / TICK_RATE, e.maxHp - e.hp, this.credits[e.side] / ECON.repair.costPerHp);
+          if (heal > 0) {
+            e.hp += heal;
+            this.credits[e.side] -= heal * ECON.repair.costPerHp;
+            if (this.tickCount % 8 === 0) this.fx.push({ type: 'repair', x: e.x + (Math.random() - 0.5) * e.w, y: e.y + (Math.random() - 0.5) * e.h, ttl: 6, max: 6 });
+          }
+        }
       }
     }
 

@@ -332,7 +332,18 @@ export class Input {
       switch (k) {
         case 'a': if (ids.length) this.attackMove = true; break;
         case 'r': // 巡逻模式：再左键/右键定第二点（Shift=排队追加，右键/Esc退出）
-          if (this.selectedUnits().some(u => u.type !== 'harvester')) { this.patrolMode = true; this.attackMove = false; } break;
+          if (this.selectedUnits().some(u => u.type !== 'harvester')) { this.patrolMode = true; this.attackMove = false; break; }
+          { // 选中建筑：R = 挂机维修开关（按修理厂同价自修 $0.5/HP）
+            const bs = this.selectedBuildings().filter(b => b.hp < b.maxHp || b.repairSelf);
+            if (bs.length) {
+              const turningOn = bs.some(b => !b.repairSelf);
+              for (const b of bs) w.issueCommand('player', { type: 'repairBuilding', id: b.id });
+              w.messages.push({ side: 'player', text: turningOn ? '建筑开始挂机维修（$0.5/HP）' : '已停止维修', ttl: 90 });
+              this.sound.play({ type: turningOn ? 'ready' : 'select' });
+              this.game.userPlay = true;
+            }
+          }
+          break;
         case 'g': // 固守/警戒切换：HOLD 原地开火 → GUARD 小范围追击，来回切
           if (ids.length) w.issueCommand('player', { type: 'hold', ids }); break;
         case 'f': { // 选中空闲战斗单位（再按轮切下一个，Shift=追加选中）

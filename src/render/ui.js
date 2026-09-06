@@ -146,6 +146,7 @@ export class UI {
       rows.push(`耐久 ${def.hp}`);
       if (def.power) rows.push(def.power > 0 ? `供电 +${def.power}` : `耗电 ${-def.power}`);
       if (w) rows.push(`火力 ${w.dmg} / ${w.cooldown / 30}s · 射程 ${w.range}${w.canAir ? ' · 可对空' : ''}`);
+      rows.push('受损时选中按 R 挂机维修（$0.5/HP）');
       if (def.repair) rows.push('自动维修范围内载具（按耐久扣费）');
       // 阵营限定项（如红军磁暴线圈）不进玩家侧生产列表
       if (def.produces) rows.push('生产：' + def.produces.filter(t => BUILDINGS[t] && BUILDINGS[t].side !== 'enemy').map(t => BUILDINGS[t].name).join('、'));
@@ -289,6 +290,10 @@ export class UI {
       if (e.type === 'harvester') html += `<br>载矿：${Math.round(e.load || 0)}`;
       if (e.type === 'mcv') html += '<br>按 D 展开为建造厂';
       if (e.kind === 'building' && BUILDINGS[e.type].produces) html += '<br>右键地图设集结点';
+      if (e.kind === 'building') {
+        if (e.repairSelf && e.hp < e.maxHp) html += '　<span class="vet">🔧 挂机维修中</span>';
+        else if (e.hp < e.maxHp) html += '　<span style="color:var(--dim)">按 R 挂机维修</span>';
+      }
       this.el.selinfo.innerHTML = html;
       return;
     }
