@@ -318,7 +318,17 @@ export class Input {
   onWheel(e) {
     e.preventDefault();
     this.game.userCam = true;
-    this.cam.dist = Math.min(70, Math.max(10, this.cam.dist * (e.deltaY > 0 ? 1.12 : 0.9)));
+    const oldDist = this.cam.dist;
+    const newDist = Math.min(70, Math.max(10, oldDist * (e.deltaY > 0 ? 1.12 : 0.9)));
+    if (newDist === oldDist) return;
+    // 缩放向光标聚拢：本相机全部参数随 dist 线性缩放，光标下地面点 = 视心 + 屏偏移×dist，
+    // 视心按 (1 - 新旧比) 朝光标地面点平移即可让光标下的世界点保持不动
+    const rect = this.cv.getBoundingClientRect();
+    const before = this.s2t(e.clientX - rect.left, e.clientY - rect.top);
+    this.cam.dist = newDist;
+    const k = 1 - newDist / oldDist;
+    this.cam.x = Math.min(this.world.w, Math.max(0, this.cam.x + (before.x - this.cam.x) * k));
+    this.cam.y = Math.min(this.world.h, Math.max(0, this.cam.y + (before.y - this.cam.y) * k));
   }
 
   onKey(e, down) {
