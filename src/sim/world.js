@@ -552,7 +552,8 @@ export class World {
       if (s.side === 'enemy' && s.t > 0 && s.t % 12 === 0) this.events.push({ type: 'siren', x: s.x, y: s.y });
       if (--s.t > 0) continue;
       this.strikes.splice(i, 1);
-      splashDamage(this, s.x, s.y, { dmg: ECON.super.dmg, dtype: 'shell', splash: ECON.super.radius }, null);
+      // 伪击杀方携带阵营：轨道炮击杀计入战报击毁数并触发击杀确认音（经验不给——不是具体单位的战功）
+      splashDamage(this, s.x, s.y, { dmg: ECON.super.dmg, dtype: 'shell', splash: ECON.super.radius }, { side: s.side, dead: false, id: -1 });
       this.fx.push({ type: 'boom', x: s.x, y: s.y, r: ECON.super.radius, ttl: 20, max: 20, shake: 1 });
       this.events.push({ type: 'superHit', x: s.x, y: s.y });
     }

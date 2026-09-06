@@ -80,9 +80,10 @@ export class Sound {
     this.master.gain.value = this.settings.muted ? 0 : 1;
     this.sfxBus.gain.value = this.settings.sfx * this.settings.sfx;
     this.musicBase = this.settings.music * this.settings.music * 0.9;
-    // 爆炸闪避会调度 musicBus 的自动化曲线：直接赋值会被旧曲线覆盖导致调音量无效，先清掉
+    // 爆炸闪避会调度 musicBus 的自动化曲线：直接赋值会被旧曲线覆盖导致调音量无效，先清掉。
+    // 胜负已分时保持配乐淡出（否则调音量会把已经淡出的配乐拉回来）
     this.musicBus.gain.cancelScheduledValues(this.ctx.currentTime);
-    this.musicBus.gain.value = this.musicBase;
+    this.musicBus.gain.value = this.musicPaused ? 0 : this.musicBase;
     try { localStorage.setItem(LS_KEY, JSON.stringify(this.settings)); } catch { /* 隐私模式 */ }
   }
 
@@ -310,8 +311,10 @@ export class Sound {
     this.tone({ freq: 120, dur: 0.14, type: 'square', gain: 0.1, delay: 0.1, vary: false });
   }
   coin(out) {
-    this.tone({ freq: 1245, dur: 0.07, type: 'square', gain: 0.07, out, vary: false });
-    this.tone({ freq: 1865, dur: 0.1, type: 'square', gain: 0.06, out, delay: 0.06, vary: false });
+    // 每次轻微变调：两台矿车交替卸货时金币音不显机械
+    const v = 0.98 + Math.random() * 0.04;
+    this.tone({ freq: 1245 * v, dur: 0.07, type: 'square', gain: 0.07, out, vary: false });
+    this.tone({ freq: 1865 * v, dur: 0.1, type: 'square', gain: 0.06, out, delay: 0.06, vary: false });
     // 矿石倾泻哗啦声（三连颗粒）
     for (let i = 0; i < 3; i++) {
       this.noise({ dur: 0.05, type: 'bandpass', freq: 900 + Math.random() * 900, gain: 0.1, out, delay: 0.05 + i * 0.07 });

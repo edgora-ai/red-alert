@@ -620,5 +620,17 @@ check('天启坦克双联导弹可对空', drone.hp < drone.maxHp, `ghost hp ${M
   check('同一目标只播报一次', !w6.messages.some(m => m.text.includes('基洛夫')));
 }
 
+// —— 阶段22：v8 第十二轮审查回归（轨道炮击杀计入战报） ——
+{
+  world.superCd.player = 0;
+  const killSpot = freeSpotN(50, 30, 1);
+  const victim9 = world.addUnit('enemy', 'rifle', killSpot.tx + 0.5, killSpot.ty + 0.5);
+  const kills9 = world.stats.player.kills;
+  world.issueCommand('player', { type: 'superstrike', x: killSpot.tx + 0.5, y: killSpot.ty + 0.5 });
+  for (let i = 0; i < 60; i++) world.tick();
+  check('轨道炮击杀计入战报（伪击杀方带阵营）', victim9.dead && world.stats.player.kills >= kills9 + 1,
+    `kills ${kills9} -> ${world.stats.player.kills}`);
+}
+
 console.log(`\n${failures === 0 ? '全部通过 ✔' : failures + ' 项失败 ✘'}`);
 process.exit(failures === 0 ? 0 : 1);
