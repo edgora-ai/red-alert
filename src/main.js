@@ -138,6 +138,7 @@ function boot() {
 
       // 音频：消费事件（空间化）+ 每帧烈度/配乐驱动
       if (sound) {
+        if (world.winner) sound.musicPaused = true; // 胜负已分：战斗配乐淡出，把舞台留给胜负 jingle
         sound.drain(world.events, camera);
         sound.update(dt);
       }

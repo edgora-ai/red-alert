@@ -144,6 +144,14 @@ export class Sound {
     // 热度动态：攻击快（战斗一起音乐立刻跟上）、衰减慢（战斗结束余韵保留）
     this.eventHeat = Math.max(0, this.eventHeat - dt * 0.28);
     this.heat += (Math.min(1, this.eventHeat) - this.heat) * Math.min(1, dt * 2.2);
+    // 胜负分明后战斗配乐淡出（把舞台留给胜负 jingle 与战后余韵）
+    if (this.musicPaused) {
+      if (this.musicBus.gain.value > 0.01) {
+        this.musicBus.gain.setTargetAtTime(0, this.ctx.currentTime, 0.8);
+      }
+      this.nextStepT = this.ctx.currentTime;
+      return;
+    }
     this.scheduleMusic();
     // 远处战场闷雷：战斗热度中上时随机低频滚雷，增强空间纵深（静音/零音量时不白建节点）
     if (!this.settings.muted && this.settings.music > 0 && this.heat > 0.3 && Math.random() < dt * 0.14) {

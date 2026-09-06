@@ -620,7 +620,11 @@ export class World {
               const d = Math.sqrt(d2);
               const push = ((R - d) / d) * 0.06;
               const px = dx * push, py = dy * push;
-              a.x -= px; a.y -= py; b.x += px; b.y += py;
+              // 前向阻挡检查：分离不许把单位推进建筑/岩石（否则会卡在 footprint 里）
+              const nax = a.x - px, nay = a.y - py;
+              if (aFly || !this.isBlocked(Math.floor(nax), Math.floor(nay))) { a.x = nax; a.y = nay; }
+              const nbx = b.x + px, nby = b.y + py;
+              if (!aFly || !this.isBlocked(Math.floor(nbx), Math.floor(nby))) { b.x = nbx; b.y = nby; }
             }
           }
         }
