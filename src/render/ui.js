@@ -263,6 +263,7 @@ export class UI {
         '<span class="h"></span><span class="h pl">蓝军（你）</span><span class="h en">红军（AI）</span><span class="h"></span>',
         `<span class="h">对局时长</span><span class="pl">${mm}:${ss}</span><span class="h"></span><span class="h"></span>`,
         `<span class="h">击毁</span><span class="pl">${s.player.kills}</span><span class="en">${s.enemy.kills}</span><span class="h"></span>`,
+        `<span class="h">击毁价值</span><span class="pl">$${s.player.killsValue ?? 0}</span><span class="en">$${s.enemy.killsValue ?? 0}</span><span class="h"></span>`,
         `<span class="h">损失</span><span class="pl">${s.player.lost}</span><span class="en">${s.enemy.lost}</span><span class="h"></span>`,
         `<span class="h">采矿总量</span><span class="pl">$${s.player.mined ?? 0}</span><span class="en">$${s.enemy.mined ?? 0}</span><span class="h"></span>`,
         `<span class="h">超武发射</span><span class="pl">${s.player.superFired ?? 0} 次</span><span class="en">${s.enemy.superFired ?? 0} 次</span><span class="h"></span>`,

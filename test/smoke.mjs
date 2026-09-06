@@ -757,5 +757,27 @@ check('天启坦克双联导弹可对空', drone.hp < drone.maxHp, `ghost hp ${M
   wz.killEntity(holderZ); wz.killEntity(runnerZ);
 }
 
+// —— 阶段27：v8 第二十轮审查回归（击毁价值 / 晋升闪白） ——
+{
+  const kv = world.addUnit('enemy', 'rifle', 24.5, 30.5);
+  kv.hp = 1;
+  const kvKiller = world.unitsOf('player').find(u => u.weapon && u.level === 0) || world.addUnit('player', 'cheetah', 25.5, 31.5);
+  const kvBefore = world.stats.player.killsValue ?? 0;
+  const lvBefore = kvKiller.level;
+  const { applyDamage: ad27 } = await import('../src/sim/combat.js');
+  ad27(world, kv, 10, 'shell', kvKiller);
+  check('击毁价值计入战报（150 杀记 $150）', (world.stats.player.killsValue ?? 0) >= kvBefore + 150,
+    `$${kvBefore} -> $${world.stats.player.killsValue}`);
+  kvKiller.xp = 0; kvKiller.level = lvBefore; // 清干净晋升状态不影响后续
+}
+{
+  const pv = world.addUnit('player', 'rifle', 26.5, 30.5);
+  const pvLevel = pv.level;
+  world.addXp(pv, 300);
+  check('晋升瞬间模型闪白（flash 窗口）', pv.level > pvLevel && pv.flash > 0,
+    `level=${pv.level} flash=${pv.flash}`);
+  world.killEntity(pv);
+}
+
 console.log(`\n${failures === 0 ? '全部通过 ✔' : failures + ' 项失败 ✘'}`);
 process.exit(failures === 0 ? 0 : 1);

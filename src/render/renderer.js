@@ -570,14 +570,16 @@ export class Renderer {
       if (ud.spin) ud.spin.obj.rotation.y += dt * ud.spin.speed;
       if (ud.bob) { ud.bob.obj.position.y = ud.bob.y + Math.sin(w.tickCount * 0.08) * 0.04; ud.bob.obj.rotation.y += dt; }
       if (ud.prism) ud.prism.rotation.y += dt * 2;
-      // 武器充能辉光：冷却将尽时棱镜/核心/磁暴球渐亮脉冲（预开火的能量感）
+      // 武器充能辉光：冷却将尽时棱镜/核心/磁暴球渐亮脉冲，开火瞬间爆闪后回落（能量释放感）
       if (e.cooldown !== undefined) {
         const glowMesh = ud.prism || ud.orb;
         if (glowMesh) {
           const base = (glowMesh.userData.baseI ??= glowMesh.material.emissiveIntensity);
+          const wdef = e.weapon ? WEAPONS[e.weapon] : null;
+          const justFired = !!wdef && e.cooldown > wdef.cooldown - 6; // 开火后 0.2s
           const charge = 1 - Math.min(1, e.cooldown / 18); // 最后 0.6s 渐亮
-          glowMesh.material.emissiveIntensity = base * (1.1 + charge * 1.4);
-          if (ud.orb) glowMesh.scale.setScalar(1 + charge * 0.16); // 磁暴球充能时微微胀大
+          glowMesh.material.emissiveIntensity = base * (justFired ? 2.6 : 1.1 + charge * 1.4);
+          if (ud.orb) glowMesh.scale.setScalar(1 + (justFired ? 0.3 : charge * 0.16)); // 磁暴球充能微胀/开火弹出
         }
       }
       if (ud.oreFill) ud.oreFill.visible = (e.load || 0) > 10;
