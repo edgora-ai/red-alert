@@ -116,6 +116,14 @@ function startGame() {
     import('./demo.js').then(m => m.startDemo({ world, game, camera, ai })).catch(e => showFatal(e.message));
   }
 }
+// P1-6 再来一局保留配置：复用上次选单直接开新局（难度/地图/玩法/资源原样，不刷新页面）
+window.__restartGame = () => {
+  try {
+    game.selection.clear();
+    game.markers.length = 0;
+    startGame();
+  } catch (e) { showFatal(e.message); console.error(e); }
+};
 
 // 开始界面：选难度 → 开战（同时解锁 WebAudio）
 const startEl = document.getElementById('start');

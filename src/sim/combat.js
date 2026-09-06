@@ -32,6 +32,16 @@ export function updateCombat(world, e) {
   // 非追击姿态（hold/idle/patrol/attackmove）用 1.05 倍紧口径：目标一出射程立刻丢弃重扫，
   // 不在 1.4 倍的"打不着又不转火"死区里耗着
   let target = e.targetId != null ? world.entities.get(e.targetId) : null;
+  // 残留目标清理：killEntity 会把实体从 map 删除（get→undefined），此前的校验只处理了
+  // target 非空的情况——指向已消失实体的残留 id 永远不清零，attackmove 的重寻路分支
+  // （world.tick 要求 !targetId）被 truthy 残留永久阻塞，部队在开阔地挂机（E2E 复现）
+  if (e.targetId != null && (!target || target.dead)) {
+    target = null; e.targetId = null;
+    if (e.order?.type === 'attack' && e.kind === 'unit') {
+      if (!world.popQueued(e)) { e.order = { type: 'idle' }; }
+      else if (e.order?.type === 'move' || e.order?.type === 'attackmove') return;
+    }
+  }
   const chaseOrder = e.order?.type === 'attack' || e.order?.type === 'guard';
   if (target && (target.dead || !canEngage(world, e, w, target, chaseOrder ? Infinity : 1.05))) {
     target = null; e.targetId = null;

@@ -273,6 +273,10 @@ export class World {
       this.credits[side] -= def.cost;
       this.stats[side].spent += def.cost;
       chk.producer.queue.push(item);
+      // P0-3 反馈：下单建筑时明确告知“生产中，就绪后点地图放置”，不再让玩家对着地图干点
+      if (side === 'player' && made === 0 && BUILDINGS[item]) {
+        this.messages.push({ side, text: `${def.name}已加入建造队列，生产完成后点击地图放置`, ttl: 150 });
+      }
       made++;
     }
     if (made) this.events.push({ type: 'select' });
@@ -325,7 +329,17 @@ export class World {
 
   cmdPlace(side, tx, ty) {
     const item = this.sides[side].placing;
-    if (!item) return false;
+    // P0-3： placing 未就绪时点地图静默 return——现在给明确反馈（原 bug：按钮排队生产 12s，
+    // placing=null 期间点地图零提示，玩家以为游戏卡死）
+    if (!item) {
+      if (side === 'player' && this.tickCount - (this.placeIdleTick ?? -9999) > 30) {
+        this.placeIdleTick = this.tickCount;
+        const queued = this.buildingsOf(side).some(b => b.queue.length);
+        this.messages.push({ side, text: queued ? '建筑生产中…就绪后点击地图放置（可按右键取消）' : '没有待放置的建筑：先在建造栏下单', ttl: 120 });
+        this.events.push({ type: 'error' });
+      }
+      return false;
+    }
     tx = Math.floor(tx); ty = Math.floor(ty);
     if (!this.canPlace(side, item, tx, ty)) {
       if (side === 'player') { this.messages.push({ side, text: '无法在此建造', ttl: 60 }); this.events.push({ type: 'error' }); }
@@ -343,6 +357,12 @@ export class World {
       if (alt) { u.x = alt.x + 0.5; u.y = alt.y + 0.5; u.path = null; }
     }
     const b = this.addBuilding(side, item, tx, ty);
+    // P2-8 生产建筑默认集结点：朝敌方一侧 3 格（新兵不再散在基地被塔防逐个吃掉）
+    if (BUILDINGS[item]?.produces) {
+      const foe = this.buildingsOf(side === 'player' ? 'enemy' : 'player')[0];
+      const dx = foe ? Math.sign(foe.x - b.x) : 1, dy = foe ? Math.sign(foe.y - b.y) : 0;
+      b.rally = { x: b.x + dx * 3, y: b.y + dy * 3 };
+    }
     this.sides[side].placing = null;
     // 从建造厂队列移除该项目
     const yard = this.buildingsOf(side).find(y => y.queue[0] === item);
@@ -366,6 +386,21 @@ export class World {
   }
 
   cmdMove(side, ids, x, y, mode, queued = false) {
+    // P2-11 塔防威胁提示：attackmove 落点 9 格内有"迷雾中"的敌方防御塔 → 预警（防无准备推进被瞬吃）
+    if (side === 'player' && mode === 'attackmove' && this.tickCount - (this.turretTipTick ?? -9999) > 1200) {
+      let hidden = 0;
+      for (const b of this.entities.values()) {
+        if (b.kind !== 'building' || b.side === 'player' || b.dead || !b.weapon) continue;
+        if (Math.hypot(b.x - x, b.y - y) > 9) continue;
+        if (this.fog[this.idx(Math.floor(b.x), Math.floor(b.y))] === 2) continue; // 可见的不用提醒
+        hidden++;
+      }
+      if (hidden >= 2) {
+        this.turretTipTick = this.tickCount;
+        this.messages.push({ side: 'player', text: `⚠ 目标区域疑似有 ${hidden} 座敌方防御塔（迷雾中），建议先侦察再推进！`, ttl: 200 });
+        this.events.push({ type: 'error' });
+      }
+    }
     const offs = groupOffsets(ids.length);
     const heavy = this.idsHeavy(ids);
     ids.forEach((id, i) => {
@@ -582,6 +617,42 @@ export class World {
       splashDamage(this, s.x, s.y, { dmg: ECON.super.dmg, dtype: 'shell', splash: ECON.super.radius }, { side: s.side, dead: false, id: -1 });
       this.fx.push({ type: 'boom', x: s.x, y: s.y, r: ECON.super.radius, ttl: 20, max: 20, shake: 1 });
       this.events.push({ type: 'superHit', x: s.x, y: s.y });
+    }
+  }
+
+  // P2-9 残血自动回修：非战斗状态且 <35% 的地面载具 → 自动返回最近修理设施挂机维修
+  updateAutoRepair() {
+    if (this.tickCount % 30 !== 0) return;
+    for (const u of this.entities.values()) {
+      if (u.kind !== 'unit' || u.dead || u.hp >= u.maxHp * 0.35) continue;
+      const def = UNITS[u.type];
+      if (def.fly || def.inf || !u.weapon) continue;
+      if (u.order && (u.order.type === 'attack' || u.order.type === 'attackmove' || u.order.type === 'patrol')) continue;
+      if (u.targetId != null) continue;
+      if (u.oq?.length) continue; // 有排队指令的不劫持
+      if (u.autoRepair) continue;
+      let best = null, bestD = Infinity;
+      for (const b of this.entities.values()) {
+        if (b.kind !== 'building' || b.side !== u.side || b.dead) continue;
+        if (!BUILDINGS[b.type]?.repair) continue;
+        const d = dist(u.x, u.y, b.x, b.y);
+        if (d < bestD) { bestD = d; best = b; }
+      }
+      if (!best) continue;
+      u.autoRepair = true;
+      u.order = { type: 'move', x: best.x, y: best.y };
+      this.setPath(u, best.x, best.y);
+      if (u.side === 'player' && this.tickCount - (this.repairTipTick ?? -9999) > 1800) {
+        this.repairTipTick = this.tickCount;
+        this.messages.push({ side: 'player', text: `🔧 ${def.name}残血，已自动返回修理厂（战斗指令可随时打断）`, ttl: 150 });
+      }
+    }
+    // 到达修理厂即解除自动标记（修理厂 updateRepairPads 接管回血）
+    for (const u of this.entities.values()) {
+      if (u.kind !== 'unit' || !u.autoRepair) continue;
+      if (u.order?.type !== 'move' || u.path) continue;
+      u.autoRepair = false;
+      u.order = { type: 'idle' };
     }
   }
 
@@ -916,6 +987,22 @@ export class World {
       if (e.kind === 'unit') {
         // 磁暴瘫痪：原地僵直，不能移动不能开火（渲染层冒电火花）
         if (e.stun > 0) { e.stun--; continue; }
+        // 停摆看门狗：attackmove/move 有目标无路径无交火、位移 < ε 达 ~45 tick → 强制重寻路+散点
+        // （防残留 targetId 修好后其他卡死路径复发：寻路死角/分离推挤/战斗打断丢路径）
+        if ((e.order?.type === 'attackmove' || e.order?.type === 'move') && !e.path && !e.targetId) {
+          const far = dist(e.x, e.y, e.order.x, e.order.y) > 1.5;
+          if (far) {
+            const moved = Math.hypot(e.x - (e.stallX ?? e.x), e.y - (e.stallY ?? e.y));
+            if (e.stallX === undefined) { e.stallX = e.x; e.stallY = e.y; e.stallN = 0; }
+            else if (moved < 0.05) {
+              if (++e.stallN >= 45) {
+                const jx = e.order.x + (this.rng() - 0.5) * 4, jy = e.order.y + (this.rng() - 0.5) * 4;
+                this.setPath(e, jx, jy);
+                e.stallN = 0; e.stallX = e.x; e.stallY = e.y;
+              }
+            } else { e.stallN = 0; e.stallX = e.x; e.stallY = e.y; }
+          } else { e.stallN = 0; e.stallX = e.x; e.stallY = e.y; }
+        } else { e.stallN = 0; e.stallX = e.x; e.stallY = e.y; }
         this.updateMovement(e);
         if (e.order?.type === 'harvest') updateHarvester(this, e);
         else if (e.order?.type === 'capture') this.updateCapture(e);
@@ -943,11 +1030,43 @@ export class World {
       }
     }
 
+    // 经济断档告警：60s 无采矿入账且有存活矿车非采矿态 → 提示+一键补矿车入口
+    if (this.tickCount % 90 === 0) {
+      for (const s of ['player']) {
+        const last = this.lastMineTick?.[s] ?? 0;
+        const gap = this.tickCount - last;
+        if (gap > 1800 && this.tickCount > 2000) {
+          const harvs = this.unitsOf(s).filter(u => u.type === 'harvester' && !u.dead);
+          const mining = harvs.filter(u => u.harvest && (u.harvest.state === 'loading' || u.harvest.state === 'toOre' || u.harvest.state === 'toRefinery'));
+          if (harvs.length === 0 || mining.length === 0) {
+            if (this.tickCount - (this.mineAlertTick ?? -9999) > 1800) {
+              this.mineAlertTick = this.tickCount;
+              this.messages.push({ side: 'player', text: harvs.length === 0 ? '⚠ 采矿线中断：矿车全部损失，生产矿车恢复经济（战车工厂）' : '⚠ 采矿线中断：60s 无矿石入账，检查矿车是否受阻（I 键定位矿车）', ttl: 220 });
+              this.events.push({ type: 'error' });
+            }
+          }
+        }
+      }
+    }
+    // 雷达预警：AI 波次出发且玩家有雷达站 → 侦测播报+波次出发位置警报点（小地图进攻方向）
+    if (this.tickCount % 15 === 0) {
+      const sinceWave = this.tickCount - (this.lastEnemyWaveTick ?? -99999);
+      if (sinceWave < 30 && this.buildingsOf('player').some(b => b.type === 'radar')) {
+        if (this.tickCount - (this.radarAlertTick ?? -9999) > 600) {
+          this.radarAlertTick = this.tickCount;
+          this.messages.push({ side: 'player', text: '📡 雷达预警：侦测到敌方部队集结来袭，做好防御！', ttl: 200 });
+          this.events.push({ type: 'siren' });
+          this.alerts.push({ x: this.lastWaveX ?? 48, y: this.lastWaveY ?? 48, ttl: 150, max: 150, side: 'player' });
+        }
+      }
+    }
+
     this.separateUnits();
     updateProjectiles(this);
     this.updateStrikes();
     if (this.strikeAlarm && --this.strikeAlarm.ttl <= 0) this.strikeAlarm = null;
     this.updateRepairPads();
+    this.updateAutoRepair();
     if (this.tickCount % ECON.neutral.period === 0) this.updateNeutralIncome();
     for (const s of ['player', 'enemy']) {
       if (this.superCd[s] > 0) {

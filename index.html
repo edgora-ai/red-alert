@@ -59,7 +59,7 @@ window.addEventListener('error', () => {
       </div>
       <button id="startBtn">开 始 行 动</button>
       <div class="start-keys">左键框选 · 右键移动/攻击 · <b>A</b> 攻击移动 · <b>R</b> 巡逻 · <b>G</b> 固守/警戒 · <b>Shift</b> 排队指令</div>
-      <div class="start-keys">1-9 编队 · 空格警报 · <b>F</b> 空闲部队 · <b>D</b> 展开 · <b>B/N/C/K</b> 建造页 · P 暂停 · 中键拖屏</div>
+      <div class="start-keys">1-9 编队 · 空格警报 · <b>F</b> 空闲部队 · <b>D</b> 展开 · <b>B/N/C/K</b> 建造页 · P 暂停 · 中键拖屏 · <b>F1</b> 指挥官手册</div>
       <div class="start-keys">地图 / 玩法 / 初始资源：开局前自由搭配（受损建筑选中按 R 挂机维修）</div>
     </div>
   </div>
@@ -113,6 +113,23 @@ window.addEventListener('error', () => {
   </div>
 
   <div id="tooltip" class="hidden"></div>
+
+  <!-- F1 游戏内帮助面板（P2-10：操作教学常驻游戏内，不再只有开始界面一屏文字） -->
+  <div id="helpPanel" class="hidden">
+    <div class="help-card">
+      <div class="help-title">指挥官手册 <span class="help-key">F1 / ESC 关闭</span></div>
+      <div class="help-grid">
+        <div><b>左键</b> 框选 / 点选</div><div><b>右键</b> 移动 / 攻击 / 设集结点</div>
+        <div><b>A</b> 攻击移动</div><div><b>R</b> 巡逻（部队）/ 维修（建筑）</div>
+        <div><b>G</b> 固守 ⇄ 警戒</div><div><b>S</b> 停止（清空队列）</div>
+        <div><b>Shift</b> 排队指令 / ×5 生产</div><div><b>1-9</b> 编队（Ctrl+数字保存，双击跳视角）</div>
+        <div><b>F</b> 空闲部队 <b>I</b> 空闲矿车</div><div><b>D</b> 基地车展开 <b>X</b> 变卖建筑</div>
+        <div><b>V</b> 轨道炮 <b>P</b> 暂停 <b>M</b> 静音</div><div><b>空格</b> 跳到警报点 <b>H</b> 回基地</div>
+        <div><b>B/N/C/K</b> 建造页切换</div><div><b>+/-</b> 变速 <b>中键</b> 拖屏</div>
+      </div>
+      <div class="help-tips">进阶：残血载具自动回修理厂 · 生产建筑自带朝敌集结点 · 空降前先用雷达/侦察确认塔防 · 工程师占领中立补给站（每5s+$100）</div>
+    </div>
+  </div>
 
   <div id="overlay" class="hidden">
     <div id="overlayText"></div>

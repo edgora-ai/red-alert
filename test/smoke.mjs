@@ -368,6 +368,17 @@ world.issueCommand('player', { type: 'cancelProduce', item: 'hunter' });
 // 13.3 磁暴线圈：链式电弧跳双目标 + 麻痹
 const sp3 = freeSpotN(40, 40, 1);
 const tesla = world.addBuilding('enemy', 'tesla', sp3.tx, sp3.ty);
+// 夹具自足：磁暴线圈耗电 60，敌方电网余量不足会低电停摆（既定机制：防御塔低电停火，
+// 本测试对象是链式/麻痹而非电网）→ 余量不足时在敌方基地旁补一座电厂，保证前置条件显式成立
+{
+  const { updatePower: up133 } = await import('../src/sim/economy.js');
+  up133(world);
+  if (world.power.enemy.supply - world.power.enemy.demand < 60) {
+    const ey133 = world.buildingsOf('enemy').find(b => b.type === 'yard');
+    const esp133 = freeSpotN(ey133 ? ey133.tx : 80, ey133 ? ey133.ty : 15, 2);
+    if (esp133) { world.addBuilding('enemy', 'power', esp133.tx, esp133.ty); up133(world); }
+  }
+}
 const tv1 = world.addUnit('player', 'cheetah', sp3.tx + 1.5, sp3.ty + 3.5);
 const tv2 = world.addUnit('player', 'cheetah', sp3.tx + 3.5, sp3.ty + 3.5);
 tv1.order = { type: 'hold', x: tv1.x, y: tv1.y };
@@ -866,6 +877,172 @@ check('阵营门：玩家无法生产空天航母、AI 无法生产浮空炮艇'
     `maxProj=${maxProj} hp ${Math.round(bhp0)} -> ${Math.round(bTarget.hp)}`);
   world.killEntity(cvt);
   if (!bTarget.dead) world.killEntity(bTarget);
+}
+
+// —— 阶段30：E2E 试玩问题归零回归（轮42：P0×3 + P1×4 + P2×4，共 11 项修复锁定） ——
+{
+  // 30.1 P0-1 残留目标清理：目标实体被删除后 attackmove 不再永久挂机（2 tick 内清零+重寻路）
+  const w30 = createSkirmish(424242);
+  const a30 = w30.addUnit('player', 'cheetah', 20.5, 60.5);
+  const foe30 = w30.addUnit('enemy', 'tyrant', 60.5, 30.5);
+  w30.issueCommand('player', { type: 'attackmove', ids: [a30.id], x: 60, y: 30 });
+  a30.targetId = foe30.id; // 模拟接敌瞬间目标被击毁（killEntity 从 map 移除）
+  w30.killEntity(foe30, a30);
+  a30.path = null;
+  w30.tick(); w30.tick();
+  check('P0-1残留目标清理（阵亡目标不阻塞重寻路）', a30.targetId == null && !!a30.path,
+    `target=${a30.targetId} path=${a30.path ? a30.path.length : a30.path}`);
+}
+{
+  // 30.2 P0-1 停摆看门狗：45 tick 无位移强制重寻路
+  const w31 = createSkirmish(434343);
+  const a31 = w31.addUnit('player', 'cheetah', 20.5, 60.5);
+  w31.issueCommand('player', { type: 'attackmove', ids: [a31.id], x: 80, y: 20 });
+  a31.path = null; a31.targetId = null;
+  a31.stallX = a31.x; a31.stallY = a31.y; a31.stallN = 44;
+  w31.tick();
+  check('P0-1停摆看门狗（45tick无位移强制重寻路）', !!a31.path,
+    `path=${a31.path ? a31.path.length : a31.path}`);
+}
+{
+  // 30.3 P0-2 精炼厂被毁广播：矿车抱矿待命不再静默
+  const w32 = createSkirmish(444444);
+  for (const b of w32.buildingsOf('player').filter(b => b.type === 'refinery')) w32.killEntity(b);
+  const h32 = w32.unitsOf('player').find(u => u.type === 'harvester');
+  h32.load = 700;
+  h32.harvest = { state: 'toRefinery', refId: -999, oreTx: 0, oreTy: 0, timer: 0 };
+  h32.order = { type: 'harvest' };
+  w32.messages.length = 0;
+  w32.tick();
+  check('P0-2精炼厂被毁广播（矿车抱矿待命不再静默）', h32.harvest.state === 'idle'
+    && w32.messages.some(m => m.text.includes('精炼厂')), `state=${h32.harvest?.state}`);
+}
+{
+  // 30.4 P0-2 物流超时自愈：toRefinery 卡死 600 tick 触发重寻路+提示
+  const w41 = createSkirmish(535353);
+  const h41 = w41.unitsOf('player').find(u => u.type === 'harvester');
+  const ref41 = w41.buildingsOf('player').find(b => b.type === 'refinery');
+  h41.load = 700;
+  h41.x = ref41.x + 12; h41.y = ref41.y; h41.path = null;
+  h41.harvest = { state: 'toRefinery', refId: ref41.id, oreTx: 0, oreTy: 0, timer: 0, stallN: 599, stallX: h41.x, stallY: h41.y };
+  h41.order = { type: 'harvest' };
+  w41.messages.length = 0;
+  w41.tick();
+  check('P0-2物流超时自愈（600tick重寻路不断线）', !!h41.path && w41.messages.some(m => m.text.includes('重新规划')),
+    `path=${h41.path ? h41.path.length : h41.path}`);
+}
+{
+  // 30.5 P1-5 经济断档告警：60s 无入账且矿车全灭 → 提示补矿车
+  const w33 = createSkirmish(454545);
+  for (const u of w33.unitsOf('player').filter(u => u.type === 'harvester')) w33.killEntity(u);
+  w33.lastMineTick = { player: 0, enemy: 0 };
+  w33.tickCount = 10079; // 下一 tick=10080，命中 %90 告警窗口
+  w33.messages.length = 0;
+  w33.tick();
+  check('P1-5经济断档告警（60s无入账提示补矿车）', w33.messages.some(m => m.text.includes('采矿线中断')),
+    `msgs=${w33.messages.map(m => m.text.slice(0, 14)).join('|')}`);
+}
+{
+  // 30.6 P1-4 雷达预警：AI 波次出发 + 玩家有雷达站 → 播报+警报+小地图方向
+  const w34 = createSkirmish(464646);
+  const yard34 = w34.buildingsOf('player').find(b => b.type === 'yard');
+  let rsp34 = null;
+  for (let r = 2; r <= 12 && !rsp34; r++) for (let dy = -r; dy <= r && !rsp34; dy++) for (let dx = -r; dx <= r; dx++) {
+    if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+    if (w34.canPlace('player', 'radar', yard34.tx + dx, yard34.ty + dy)) { rsp34 = { tx: yard34.tx + dx, ty: yard34.ty + dy }; break; }
+  }
+  w34.addBuilding('player', 'radar', rsp34.tx, rsp34.ty);
+  w34.lastMineTick = { player: 999999, enemy: 999999 }; // 压住经济告警串台
+  w34.tickCount = 10079; // 下一 tick=10080，命中 %15 预警窗口（10080%15==0）
+  w34.lastEnemyWaveTick = 10080 - 5;
+  w34.lastWaveX = 60; w34.lastWaveY = 40;
+  w34.messages.length = 0; w34.events.length = 0;
+  w34.tick();
+  check('P1-4雷达预警（波次出发播报+小地图方向）', w34.messages.some(m => m.text.includes('雷达预警'))
+    && w34.events.some(e => e.type === 'siren') && w34.alerts.some(a => a.side === 'player'),
+    `msgs=${w34.messages.map(m => m.text.slice(0, 14)).join('|')}`);
+}
+{
+  // 30.7 P0-3 空放置提示：placing 未就绪时点地图不再静默
+  const w35 = createSkirmish(474747);
+  w35.sides.player.placing = null;
+  w35.messages.length = 0;
+  const r35 = w35.issueCommand('player', { type: 'build', tx: 20, ty: 70 });
+  check('P0-3空放置提示（placing未就绪点地图不再静默）', r35 === false && w35.messages.length > 0,
+    `msgs=${w35.messages.map(m => m.text.slice(0, 18)).join('|')}`);
+}
+{
+  // 30.8 P0-3 下单反馈：建筑进队列即告知放置流程
+  const w36 = createSkirmish(484848);
+  w36.credits.player = 9000;
+  w36.messages.length = 0;
+  const r36 = w36.issueCommand('player', { type: 'produce', item: 'power' });
+  check('P0-3下单反馈（建筑进队列即告知放置流程）', r36 === true && w36.messages.some(m => m.text.includes('点击地图放置')),
+    `msgs=${w36.messages.map(m => m.text.slice(0, 20)).join('|')}`);
+}
+{
+  // 30.9 P1-7 低电明细：缺口数值 + 耗电大头
+  const w37 = createSkirmish(494949);
+  const { updatePower: up37 } = await import('../src/sim/economy.js');
+  for (const b of [...w37.entities.values()].filter(e => e.kind === 'building' && e.side === 'player' && (w37.buildingDef(e).power || 0) > 0)) w37.entities.delete(b.id);
+  w37.messages.length = 0;
+  up37(w37);
+  check('P1-7低电明细（缺口数值+耗电大头）', w37.messages.some(m => m.text.includes('缺口')),
+    `msgs=${w37.messages.map(m => m.text.slice(0, 30)).join('|')}`);
+}
+{
+  // 30.10 P2-8 生产建筑默认集结点：落成即朝敌方一侧 3 格
+  const w38 = createSkirmish(505050);
+  w38.sides.player.placing = 'factory';
+  const yard38 = w38.buildingsOf('player').find(b => b.type === 'yard');
+  let fsp38 = null;
+  for (let r = 2; r <= 12 && !fsp38; r++) for (let dy = -r; dy <= r && !fsp38; dy++) for (let dx = -r; dx <= r; dx++) {
+    if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+    if (w38.canPlace('player', 'factory', yard38.tx + dx, yard38.ty + dy)) { fsp38 = { tx: yard38.tx + dx, ty: yard38.ty + dy }; break; }
+  }
+  const ok38 = w38.issueCommand('player', { type: 'build', tx: fsp38.tx, ty: fsp38.ty });
+  const fb38 = w38.buildingsOf('player').find(b => b.type === 'factory' && b.tx === fsp38.tx);
+  check('P2-8生产建筑默认集结点（新兵直奔前线）', ok38 && !!fb38?.rally, `rally=${JSON.stringify(fb38?.rally)}`);
+}
+{
+  // 30.11 P2-9 残血自动回修：<35% 非战斗载具自动返回修理厂
+  const w39 = createSkirmish(515151);
+  const yard39 = w39.buildingsOf('player').find(b => b.type === 'yard');
+  let rsp39 = null;
+  for (let r = 2; r <= 12 && !rsp39; r++) for (let dy = -r; dy <= r && !rsp39; dy++) for (let dx = -r; dx <= r; dx++) {
+    if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+    if (w39.canPlace('player', 'repair', yard39.tx + dx, yard39.ty + dy)) { rsp39 = { tx: yard39.tx + dx, ty: yard39.ty + dy }; break; }
+  }
+  w39.addBuilding('player', 'repair', rsp39.tx, rsp39.ty);
+  const t39 = w39.addUnit('player', 'cheetah', yard39.x + 1, yard39.y + 1);
+  t39.hp = t39.maxHp * 0.3; t39.order = { type: 'idle' }; t39.targetId = null; t39.oq = [];
+  w39.lastMineTick = { player: 999999, enemy: 999999 };
+  w39.tickCount = 10079; // 下一 tick=10080，命中 %30 回修窗口
+  w39.tick();
+  check('P2-9残血自动回修（<35%非战斗回修理厂）', t39.autoRepair === true && t39.order?.type === 'move',
+    `order=${t39.order?.type} auto=${t39.autoRepair}`);
+}
+{
+  // 30.12 P2-11 塔防威胁提示：attackmove 落点附近迷雾塔防群预警
+  const w40 = createSkirmish(525252);
+  for (const [tx, ty] of [[50, 50], [52, 50]]) w40.tiles[w40.idx(tx, ty)] = TT.GRASS;
+  w40.addBuilding('enemy', 'laser', 50, 50);
+  w40.addBuilding('enemy', 'laser', 52, 50);
+  const atk40 = w40.addUnit('player', 'cheetah', 20.5, 60.5);
+  w40.messages.length = 0;
+  w40.issueCommand('player', { type: 'attackmove', ids: [atk40.id], x: 51, y: 50 });
+  check('P2-11塔防威胁提示（迷雾塔防群预警）', w40.messages.some(m => m.text.includes('防御塔')),
+    `msgs=${w40.messages.map(m => m.text.slice(0, 24)).join('|')}`);
+}
+{
+  // 30.13 P1-6/P2-10 静态链路守卫：免刷新重开 + F1 手册接线不被误删
+  const { readFileSync } = await import('node:fs');
+  const mainJs = readFileSync('src/main.js', 'utf8');
+  const uiJs = readFileSync('src/render/ui.js', 'utf8');
+  const inputJs = readFileSync('src/render/input.js', 'utf8');
+  const html = readFileSync('index.html', 'utf8');
+  check('P1-6再来一局保留配置（免刷新重开链路）', mainJs.includes('__restartGame') && uiJs.includes('__restartGame'));
+  check('P2-10游戏内帮助面板（F1手册接线）', html.includes('helpPanel') && inputJs.includes('helpPanel'));
 }
 
 console.log(`\n${failures === 0 ? '全部通过 ✔' : failures + ' 项失败 ✘'}`);

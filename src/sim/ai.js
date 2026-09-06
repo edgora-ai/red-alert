@@ -272,6 +272,12 @@ export class Commander {
     w.issueCommand(s, { type: 'attackmove', ids, x: yard.x, y: yard.y });
     this.waveNo++;
     this.waveCd = this.diff.waveGap * this.waveMul;
+    // 雷达预警钩子：记录波次出发 tick+位置（world.tick 消费 → 雷达站播报+小地图方向）
+    if (s === 'enemy') {
+      w.lastEnemyWaveTick = w.tickCount;
+      w.lastWaveX = army.length ? army.reduce((a, u) => a + u.x, 0) / army.length : 48;
+      w.lastWaveY = army.length ? army.reduce((a, u) => a + u.y, 0) / army.length : 48;
+    }
   }
 
   // 基地防守：警报点在自家附近时，空闲部队回防（限频，防抽风）

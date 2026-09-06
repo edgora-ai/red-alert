@@ -428,7 +428,15 @@ export class Input {
         }
         case '=': case '+': this.game.speedIdx = Math.min(this.game.SPEEDS.length - 1, this.game.speedIdx + 1); break;
         case '-': case '_': this.game.speedIdx = Math.max(0, this.game.speedIdx - 1); break;
+        case 'f1': // P2-10 游戏内帮助面板（进阶操作教学常驻游戏内）
+          document.getElementById('helpPanel')?.classList.toggle('hidden');
+          e.preventDefault();
+          break;
         case 'escape':
+          if (!document.getElementById('helpPanel')?.classList.contains('hidden')) {
+            document.getElementById('helpPanel')?.classList.add('hidden');
+            break;
+          }
           if (w.sides.player.placing) w.issueCommand('player', { type: 'cancelPlace' });
           this.attackMove = false;
           this._clearSuperTarget();

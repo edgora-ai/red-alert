@@ -61,7 +61,12 @@ export class UI {
     document.querySelectorAll('.tab').forEach(btn => {
       btn.onclick = () => this.setTab(btn.dataset.tab);
     });
-    document.getElementById('restartBtn').onclick = () => location.reload();
+    // P1-6 再来一局保留全部选单配置：直接用上次选择 startGame，不刷新页面
+    document.getElementById('restartBtn').onclick = () => {
+      this.overlayShown = false;
+      this.el.overlay.classList.add('hidden');
+      window.__restartGame?.();
+    };
 
     // 设置面板
     const gear = document.getElementById('gearBtn');
