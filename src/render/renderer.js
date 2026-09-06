@@ -1200,9 +1200,53 @@ export class Renderer {
     if (!this.lowfx) this.trauma = Math.min(1, this.trauma + a);
   }
 
+  // ---------- 建造范围可视化（placing 时高亮 margin-2 邻接的可建格） ----------
+  syncBuildZone(item) {
+    const w = this.world;
+    if (!this.buildZoneCv) {
+      this.buildZoneCv = document.createElement('canvas');
+      this.buildZoneCv.width = w.w; this.buildZoneCv.height = w.h;
+      this.buildZoneTex = new THREE.CanvasTexture(this.buildZoneCv);
+      this.buildZonePlane = new THREE.Mesh(
+        new THREE.PlaneGeometry(w.w, w.h),
+        new THREE.MeshBasicMaterial({ map: this.buildZoneTex, transparent: true, opacity: 0.12, depthWrite: false }),
+      );
+      this.buildZonePlane.rotation.x = -Math.PI / 2;
+      this.buildZonePlane.position.set(w.w / 2, 0.045, w.h / 2);
+      this.buildZonePlane.renderOrder = 3;
+      this.buildZonePlane.visible = false;
+      this.scene.add(this.buildZonePlane);
+    }
+    if (!item) { this.buildZonePlane.visible = false; this._bzItem = null; return; }
+    // 进入放置或每 90 tick（有新建筑落成会改变范围）重建蒙版
+    if (this._bzItem !== item || w.tickCount - (this._bzTick ?? -999) >= 90) {
+      this._bzItem = item; this._bzTick = w.tickCount;
+      const c = this.buildZoneCv.getContext('2d');
+      c.clearRect(0, 0, w.w, w.h);
+      c.fillStyle = '#7ee787';
+      const bs = w.buildingsOf('player');
+      for (let ty = 0; ty < w.h; ty++) {
+        for (let tx = 0; tx < w.w; tx++) {
+          const i = w.idx(tx, ty);
+          if (w.tiles[i] !== T.GRASS || w.bgrid[i] !== -1) continue;
+          let near = false;
+          for (const b of bs) {
+            const gapX = Math.max(0, Math.max(tx - (b.tx + b.w), b.tx - (tx + 1)));
+            const gapY = Math.max(0, Math.max(ty - (b.ty + b.h), b.ty - (ty + 1)));
+            if (Math.max(gapX, gapY) <= ECON.placeMargin) { near = true; break; }
+          }
+          if (near) c.fillRect(tx, ty, 1, 1);
+        }
+      }
+      this.buildZoneTex.needsUpdate = true;
+    }
+    this.buildZonePlane.visible = true;
+  }
+
   // ---------- 标记/幽灵/集结 ----------
   syncHelpers() {
     const { game, world: w } = this;
+    this.syncBuildZone(w.sides.player.placing);
 
     // 点击标记（暂停时冻结倒计时，与整帧冻结一致）
     for (let i = game.markers.length - 1; i >= 0; i--) {
