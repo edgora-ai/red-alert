@@ -593,7 +593,13 @@ export class Renderer {
           if (ud.orb) glowMesh.scale.setScalar(1 + (justFired ? 0.3 : charge * 0.16)); // 磁暴球充能微胀/开火弹出
         }
       }
-      if (ud.oreFill) ud.oreFill.visible = (e.load || 0) > 10;
+      if (ud.oreFill) {
+        // 矿石晶体平滑显隐：卸货缩回不闪没
+        const target = (e.load || 0) > 10 ? 1 : 0.001;
+        const os = ud.oreFill.scale.x + (target - ud.oreFill.scale.x) * Math.min(1, dt * 8);
+        ud.oreFill.scale.setScalar(os);
+        ud.oreFill.visible = os > 0.02;
+      }
       // 炮管后坐动画
       const barrels = ud.turret?.userData?.barrels;
       if (barrels) {

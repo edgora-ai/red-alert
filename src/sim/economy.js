@@ -27,6 +27,8 @@ export function updateHarvester(world, u) {
       break;
     }
     case 'loading': {
+      // 被推挤离矿格就重找（修复隔空采矿：位置不校验会贴着矿边远程装货）
+      if (Math.floor(u.x) !== h.oreTx || Math.floor(u.y) !== h.oreTy) { h.state = 'idle'; u.path = null; break; }
       const i = world.idx(h.oreTx, h.oreTy);
       const perTick = (ECON.loadAmount * (world.upgrades?.[u.side]?.mine || 1)) / ECON.harvestTicks;
       const take = Math.min(perTick, world.ore[i]);
