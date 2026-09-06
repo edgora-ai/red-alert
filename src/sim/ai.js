@@ -266,10 +266,26 @@ export class Commander {
   // 固守/警戒是守备姿态：绝不被波次调走（否则防守塔后的驻军被一波带空）
   launchWaves() {
     const w = this.world, s = this.side;
-    if (this.waveCd > 0) { this.waveCd -= 15; return; }
     const army = w.unitsOf(s).filter(u => u.weapon && !u.path
       && u.order?.type !== 'attackmove' && u.order?.type !== 'attack'
       && u.order?.type !== 'hold' && u.order?.type !== 'guard');
+    // 轮47 泄洪：简单难度首波之后囤兵超 10 个才提前发 6 人小波次（首波缓冲期内绝不泄，
+    // 否则建造期 3-4 分钟就杀到，新手房子都盖不完）
+    if ((this.diff.incomeMul ?? 1) < 0.8 && this.waveNo >= 1 && army.length >= 10 && this.waveCd > 900) {
+      const targets0 = w.buildingsOf('player');
+      if (targets0.length) {
+        const yard0 = targets0.find(b => b.type === 'yard') || targets0[0];
+        const ids0 = army.slice(0, 6).map(u => u.id);
+        w.issueCommand(s, { type: 'attackmove', ids: ids0, x: yard0.x, y: yard0.y });
+        if (s === 'enemy') {
+          w.lastEnemyWaveTick = w.tickCount;
+          w.lastWaveX = yard0.x; w.lastWaveY = yard0.y;
+        }
+      }
+      this.waveCd = Math.max(900, this.waveCd - 2700); // 泄一次，倒计时提前 90s
+      return;
+    }
+    if (this.waveCd > 0) { this.waveCd -= 15; return; }
     const need = Math.min(this.diff.waveBase + this.waveNo * this.diff.waveStep, this.diff.maxWave);
     if (army.length < need) return;
     // 目标：优先玩家建造厂，其次任意玩家建筑

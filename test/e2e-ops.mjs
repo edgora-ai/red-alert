@@ -46,9 +46,15 @@ for (const map of MAPS) {
           return s ? w.issueCommand('player', { type: 'build', tx: s.tx, ty: s.ty }) : false;
         };
         let fail = null;
-        for (const b of ['power', 'barracks', 'factory', 'refinery', 'radar', 'laser', 'npower']) {
+        // 轮47：4分钟防线门槛——激光塔提前到精炼厂前（首波4分钟到，塔比矿重要）；
+        // 步兵先出2枪（便宜即战力），工厂一好坦克不停
+        for (const b of ['power', 'barracks', 'factory', 'laser', 'refinery', 'radar', 'laser', 'npower']) {
           if (w.winner) { fail = 'died-building'; break; }
-          if (!buildLine(b)) { fail = 'build-' + b; break; }
+          if (!buildLine(b === 'laser' ? 'laser' : b)) { fail = 'build-' + b; break; }
+          if (b === 'barracks') {
+            // 兵营一好立刻出2步兵协防（不占用建造队列等待）
+            for (let k = 0; k < 2; k++) w.issueCommand('player', { type: 'produce', item: 'rifle' });
+          }
         }
         if (!fail && !w.winner) {
           if (!afford(1500)) fail = 'afford-ap';

@@ -1149,6 +1149,37 @@ check('阵营门：玩家无法生产空天航母、AI 无法生产浮空炮艇'
   check('轮45简单产能封顶（不扩第二工厂）', nb !== 'factory' && nb !== 'barracks' && nb !== 'refinery', `next=${nb}`);
 }
 
+// —— 阶段35：轮47 泄洪机制（easy 首波后囤兵泄洪，不憋大招） ——
+{
+  const { Commander: C47 } = await import('../src/sim/ai.js');
+  const { DIFFS: D47 } = await import('../src/config.js');
+  check('轮47简单波次规模下调（3/6，不憋48头）', D47.easy.waveBase === 3 && D47.easy.maxWave === 6,
+    `base=${D47.easy.waveBase} max=${D47.easy.maxWave}`);
+  // 泄洪：首波后(waveNo>=1)+囤兵10+cd充足 → 发6人小波次并提前倒计时
+  const wH = createSkirmish(474747);
+  const aiH = new C47(wH, 'enemy', 'easy');
+  aiH.waveNo = 1; aiH.waveCd = 5000;
+  for (let i = 0; i < 12; i++) {
+    const u = wH.addUnit('enemy', 'tyrant', 80 + (i % 4), 20 + Math.floor(i / 4));
+    u.order = { type: 'idle' }; u.path = null;
+  }
+  aiH.launchWaves();
+  const launched = wH.unitsOf('enemy').filter(u => u.order?.type === 'attackmove').length;
+  check('轮47泄洪（首波后囤兵提前小波次）', launched === 6 && aiH.waveCd < 5000,
+    `launched=${launched} cd=${aiH.waveCd}`);
+  // 首波前不泄（建造期保护）
+  const wI = createSkirmish(484848);
+  const aiI = new C47(wI, 'enemy', 'easy');
+  aiI.waveNo = 0; aiI.waveCd = 5000;
+  for (let i = 0; i < 12; i++) {
+    const u = wI.addUnit('enemy', 'tyrant', 80 + (i % 4), 20 + Math.floor(i / 4));
+    u.order = { type: 'idle' }; u.path = null;
+  }
+  aiI.launchWaves();
+  check('轮47首波前不泄洪（建造期保护）', wI.unitsOf('enemy').filter(u => u.order?.type === 'attackmove').length === 0,
+    `launched=${wI.unitsOf('enemy').filter(u => u.order?.type === 'attackmove').length}`);
+}
+
 // —— 阶段34：轮46 接线验证回归（选单互斥/读取隔离/DOM-CSS对齐） ——
 {
   const { readFileSync } = await import('node:fs');
