@@ -546,5 +546,15 @@ check('天启坦克双联导弹可对空', drone.hp < drone.maxHp, `ghost hp ${M
   check('逃亡矿车卸货完成（load 清零，无双倍入账）', (harv2.load || 0) === 0, `load=${harv2.load}`);
 }
 
+// —— 阶段18：v8 第六轮审查回归（超武充能完毕提示） ——
+{
+  world.upgrades.player.owned.add('super');
+  world.superCd.player = 1;
+  world.tick();
+  check('超武充能完毕有文字+声音提示', world.superCd.player === 0
+    && world.messages.some(m => m.text.includes('充能完毕'))
+    && world.events.some(e => e.type === 'ready'));
+}
+
 console.log(`\n${failures === 0 ? '全部通过 ✔' : failures + ' 项失败 ✘'}`);
 process.exit(failures === 0 ? 0 : 1);

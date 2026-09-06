@@ -884,7 +884,16 @@ export class World {
     if (this.strikeAlarm && --this.strikeAlarm.ttl <= 0) this.strikeAlarm = null;
     this.updateRepairPads();
     if (this.tickCount % ECON.neutral.period === 0) this.updateNeutralIncome();
-    for (const s of ['player', 'enemy']) if (this.superCd[s] > 0) this.superCd[s]--;
+    for (const s of ['player', 'enemy']) {
+      if (this.superCd[s] > 0) {
+        this.superCd[s]--;
+        if (this.superCd[s] === 0 && s === 'player' && this.upgrades.player.owned.has('super')) {
+          // 充能完毕：以往只能盯着按钮倒数，现在有明确的声音+文字提示
+          this.messages.push({ side: 'player', text: '轨道动能炮充能完毕（V 键发射）', ttl: 150 });
+          this.events.push({ type: 'ready' });
+        }
+      }
+    }
 
     // 后台标签/无头快进时渲染层不消费 fx，限制容量防堆积
     if (this.fx.length > 500) this.fx.splice(0, this.fx.length - 500);

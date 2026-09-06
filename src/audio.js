@@ -487,6 +487,9 @@ export class Sound {
     const barInPhrase = bar % 8;              // 8 小节乐段内位置
     const s = i % 16;
     const roots = [55.0, 43.65, 65.41, 49.0]; // Am F C G
+    // 和声：进行为 Am–F–C–G。F/C/G 是大三和弦，三度必须用大 семітон（4 半音），
+    // 统一用小三度会把整段变成 Am–Fm–Cm–Gm 的浑浊平行小和弦
+    const third = bar % 4 === 0 ? Math.pow(2, 3 / 12) : Math.pow(2, 4 / 12);
     // 高潮段（t3 且乐段末两小节）整体上移小三度，随后落回——推高潮的编曲手法
     const lift = heat > 0.78 && barInPhrase >= 6 ? 1.189 : 1;
     const root = roots[bar % 4] * lift;
@@ -498,7 +501,9 @@ export class Sound {
     // 弦垫（每小节换和弦）：B 段改开放排列 + 更亮低通，与 A 段形成明暗对比
     if (s === 0 && heat > 0.08) {
       const open = barInPhrase >= 4;
-      const voicing = open ? [[2, 0], [2.5, 6], [3, -6], [4, 5]] : [[2, 0], [2, 7], [2.378, -6], [2.996, 5]];
+      const voicing = open
+        ? [[2, 0], [2 * third, 6], [3, -6], [4, 5]]
+        : [[2, 0], [2 * third, 7], [2.996, -6], [4, 5]];
       for (const [mul, det] of voicing) {
         const osc = ctx.createOscillator();
         osc.type = 'sawtooth';
@@ -551,9 +556,9 @@ export class Sound {
     if (heat > 0.3 && (s % 4 === 2 || (heat > t3 && s % 2 === 1))) {
       this.noise({ dur: 0.045, type: 'highpass', freq: 7500, gain: 0.03 + heat * 0.04, delay, out: this.musicBus });
     }
-    // 琶音（16 分）：方波 + 低通 + 延迟总线；高潮段上移八度
+    // 琶音（16 分）：方波 + 低通 + 延迟总线；三度随和弦大小切换；高潮段上移八度
     if (heat > t1) {
-      const chord = [root * 4, root * 4 * 1.189, root * 6, root * 8];
+      const chord = [root * 4, root * 4 * third, root * 6, root * 8];
       const f = chord[[0, 2, 1, 3, 0, 3, 1, 2, 0, 2, 3, 1, 0, 1, 2, 3][s]] * (heat > t3 ? 2 : 1);
       this.tone({
         freq: f, dur: spb16 * 0.55, type: 'square', gain: 0.02 + heat * 0.038,

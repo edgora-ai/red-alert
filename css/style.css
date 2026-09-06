@@ -162,6 +162,12 @@ html, body {
   box-shadow: inset 0 0 110px 26px rgba(255, 176, 40, 0.42);
   transition: opacity .3s;
 }
+/* 超武落点：全屏白闪冲击（main 触发后 0.4s 淡出） */
+#superFlash {
+  position: absolute; inset: 0; pointer-events: none; opacity: 0; z-index: 8;
+  background: radial-gradient(circle at 50% 45%, #fffdf4, #ffe9c0 60%, transparent 100%);
+  transition: opacity .4s ease-out;
+}
 #alertBanner {
   position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
   padding: 6px 22px; z-index: 7; display: none; pointer-events: none;

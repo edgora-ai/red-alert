@@ -146,6 +146,16 @@ function boot() {
           game.alertTtl = 2.2;
           game.vignette = Math.min(1, game.vignette + 0.55);
         }
+        if (e.type === 'superHit') {
+          // 轨道打击落地：全屏白闪冲击（0.4s CSS 淡出）。
+          // 恢复用 setTimeout 而非嵌套 rAF——rAF 被节流时（遮挡/后台）闪光会卡在峰值
+          const flashEl = document.getElementById('superFlash');
+          if (flashEl) {
+            flashEl.style.transition = 'none';
+            flashEl.style.opacity = 0.85;
+            setTimeout(() => { flashEl.style.transition = ''; flashEl.style.opacity = 0; }, 60);
+          }
+        }
       }
       world.events.length = 0;
 
