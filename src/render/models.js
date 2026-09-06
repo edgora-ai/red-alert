@@ -241,6 +241,12 @@ function longsword(side) {
   g.add(box(0.18, 0.18, 0.38, h, 0.32, 0.3, 0));                 // 驾驶室
   g.add(box(0.16, 0.06, 0.34, 0x1a1e24, 0.4, 0.26, 0));          // 风挡
   g.add(wheels(8, 0.1, 0.06, [-0.3, -0.1, 0.12, 0.3], 0.23));
+  // 液压支撑腿 ×4（起竖发射姿态）
+  for (const [lx, lz] of [[-0.32, 0.22], [-0.32, -0.22], [0.22, 0.22], [0.22, -0.22]])
+    g.add(cyl(0.028, 0.038, 0.12, 0x3c444e, lx, 0.08, lz));
+  // 车长导航雷达（板状）
+  g.add(box(0.03, 0.3, 0.02, 0x8a939c, 0.18, 0.5, -0.16));
+  g.add(box(0.14, 0.18, 0.015, 0xdde2e8, 0.18, 0.66, -0.16));
   const tur = new THREE.Group(); tur.position.set(-0.12, 0.28, 0);
   const tube = cyl(0.11, 0.11, 0.66, 0xdde2e8, 0.1, 0.18, 0, { rz: -Math.PI / 3.2 }); // 发射筒起竖
   tur.add(tube);
@@ -255,8 +261,12 @@ function longsword(side) {
 function aurora(side) {
   const h = HULL[side];
   const g = new THREE.Group();
-  for (const s of [-1, 1]) g.add(box(0.74, 0.12, 0.14, 0x1c2128, 0, 0.1, s * 0.24));
+  for (const s of [-1, 1]) {
+    g.add(box(0.74, 0.12, 0.14, 0x1c2128, 0, 0.1, s * 0.24));
+    g.add(cyl(0.09, 0.11, 0.02, 0x7df9ff, 0.12, 0.045, s * 0.24, { em: 0x7df9ff, emi: 1.6 })); // 悬浮辉光垫
+  }
   g.add(box(0.7, 0.12, 0.36, h, 0, 0.2, 0));
+  g.add(box(0.03, 0.1, 0.03, 0x1a1e24, -0.36, 0.3, 0));          // 尾部传感天线
   const tur = new THREE.Group(); tur.position.set(-0.02, 0.3, 0);
   tur.add(cyl(0.16, 0.2, 0.08, 0x2c343e, 0, 0, 0));
   const prism = oct(0.13, 0x7df9ff, 0, 0.18, 0, { em: 0x7df9ff, emi: 1.6 }); // 充能棱镜
@@ -296,10 +306,14 @@ function mcv(side) {
   g.add(box(1.15, 0.16, 0.6, h, 0, 0.22, 0));
   g.add(box(0.24, 0.24, 0.52, h, 0.44, 0.36, 0));                // 驾驶室
   g.add(box(0.18, 0.1, 0.46, 0x10141a, 0.5, 0.38, 0));
+  g.add(box(0.24, 0.05, 0.53, 0xffffff, 0.44, 0.27, 0, { map: tex(skin('haz'), 0.8, 0.4) })); // 驾驶室警示条
   const mod1 = box(0.5, 0.2, 0.52, 0x3c444e, -0.2, 0.4, 0);      // 折叠模块
   mod1.rotation.z = 0.12; g.add(mod1);
   const mod2 = box(0.3, 0.14, 0.52, a, -0.44, 0.44, 0, { em: a, emi: 0.2 });
   mod2.rotation.z = 0.25; g.add(mod2);
+  const beacon = sph(0.038, 0xffc94d, -0.44, 0.56, 0, { em: 0xffc94d, emi: 1.8 }); // 展开警示灯
+  g.add(beacon);
+  g.userData.bob = { obj: beacon, y: 0.56 };
   g.add(wheels(8, 0.13, 0.09, [-0.42, -0.14, 0.14, 0.42], 0.32));
   return g;
 }
@@ -477,6 +491,8 @@ function ghost(side) {
   g.add(box(0.26, 0.09, 0.26, 0x2c343e, 0, 0, 0));
   g.add(box(0.1, 0.05, 0.1, a, 0.14, 0, 0, { em: a, emi: 0.4 })); // 机头识别灯
   g.add(sph(0.05, 0x111418, 0.1, -0.07, 0));                      // 光电吊舱
+  g.add(cyl(0.012, 0.012, 0.09, 0x1a1e24, -0.06, 0.1, -0.06));    // 传感天线
+  for (const s of [-1, 1]) g.add(box(0.02, 0.05, 0.02, 0x1a1e24, 0.08, -0.09, s * 0.08)); // 起落架
   const rotors = [];
   for (const [dx, dz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
     g.add(box(0.24, 0.02, 0.04, 0x3c444e, dx * 0.17, 0.03, dz * 0.17));
@@ -569,6 +585,8 @@ const BUILDING_BUILDERS = {
     g.add(box(1.7, 0.5, 1.7, 0xffffff, -0.3, 0.32, -0.3, { map: tex(skin('metal'), 1.6, 1) })); // 主厂房金属蒙皮
     g.add(box(1.2, 0.2, 1.2, 0x3c444e, -0.3, 0.66, -0.3));
     g.add(box(0.9, 0.3, 0.05, 0xffffff, -0.3, 0.22, 0.56, { map: tex(skin('haz'), 1.4, 0.5) })); // 警示条纹大门
+    // 大门警灯 ×2
+    for (const lx of [-0.68, 0.08]) g.add(sph(0.03, 0xff6a5c, lx, 0.42, 0.57, { em: 0xff6a5c, emi: 1.8 }));
     const crane = new THREE.Group(); crane.position.set(0.9, 0.07, 0.9);
     crane.add(cyl(0.07, 0.09, 1.15, 0xc8a03c, 0, 0.58, 0));       // 塔吊立柱
     crane.add(box(1.5, 0.07, 0.07, 0xc8a03c, 0.55, 1.12, 0));     // 吊臂
@@ -602,6 +620,7 @@ const BUILDING_BUILDERS = {
     const g = slab(3, 3, side), h = HULL[side];
     g.add(cyl(0.48, 0.62, 1.0, 0xb8bfc6, -0.5, 0.57, -0.5));      // 冷却塔
     g.add(cyl(0.5, 0.5, 0.06, 0x8a939c, -0.5, 1.08, -0.5));
+    g.add(cyl(0.53, 0.56, 0.07, 0xd8a013, -0.5, 0.3, -0.5));      // 冷却塔警示环
     g.add(box(1.2, 0.5, 1.2, 0xffffff, 0.6, 0.32, 0.6, { map: tex(skin('conc'), 1.6, 1) })); // 反应堆厂房
     g.add(sph(0.3, 0xdde2e8, 0.6, 0.62, 0.6));                    // 安全壳穹顶
     g.userData.smokeStacks = [{ x: -0.5, y: 1.12, z: -0.5 }];     // 冷却塔蒸汽
@@ -627,6 +646,14 @@ const BUILDING_BUILDERS = {
     g.add(box(1.3, 0.42, 1.3, 0xffffff, 0, 0.28, 0, { map: tex(skin('conc'), 1.6, 1.2) })); // 营房
     g.add(box(1.34, 0.06, 1.34, 0xffffff, 0, 0.52, 0, { map: tex(skin('camo'), 1.2, 1.2) })); // 迷彩伪装网檐
     g.add(box(0.3, 0.3, 0.06, 0x1a1e24, 0, 0.22, 0.66));          // 大门
+    // 门口沙袋掩体（3+2 叠层）
+    const bag = (x, y, z) => {
+      const b = sph(0.07, 0x9a8a62, x, y, z, { seg: 8 });
+      b.scale.set(1.25, 0.55, 0.7);
+      return b;
+    };
+    for (let i = 0; i < 3; i++) g.add(bag(-0.34 + i * 0.15, 0.09, 0.74));
+    for (let i = 0; i < 2; i++) g.add(bag(-0.26 + i * 0.15, 0.16, 0.75));
     g.add(cyl(0.02, 0.02, 0.7, 0x8a939c, 0.5, 0.42, 0.5));        // 旗杆
     g.add(box(0.22, 0.14, 0.01, ACCENT[side], 0.62, 0.68, 0.5, { em: ACCENT[side], emi: 0.4 }));
     return g;
@@ -639,12 +666,18 @@ const BUILDING_BUILDERS = {
       tooth.rotation.z = 0.5; g.add(tooth);
     }
     g.add(box(0.8, 0.4, 0.06, 0xffffff, 0, 0.28, 0.96, { map: tex(skin('haz'), 1, 0.6) })); // 警示条纹大门
+    // 双烟囱（持续冒烟）
+    for (const x of [-0.95, 0.95]) g.add(cyl(0.09, 0.11, 0.5, 0x8a4a3a, x, 0.78, -0.75));
+    g.userData.smokeStacks = [{ x: -0.95, y: 1.05, z: -0.75 }, { x: 0.95, y: 1.05, z: -0.75 }];
     return g;
   },
   radar(side) {
     const g = slab(2, 2, side), h = HULL[side];
     g.add(box(1.0, 0.3, 1.0, 0xffffff, 0, 0.22, 0, { map: tex(skin('metal'), 1.2, 1.2) }));
     g.add(cyl(0.08, 0.1, 0.5, 0x8a939c, 0, 0.6, 0));
+    // 辅助板状天线
+    g.add(box(0.03, 0.3, 0.02, 0x8a939c, 0.4, 0.35, 0.35));
+    g.add(box(0.16, 0.18, 0.015, 0xdde2e8, 0.4, 0.52, 0.35));
     const dish = new THREE.Group(); dish.position.set(0, 0.9, 0);
     const bowl = sph(0.42, 0xdde2e8, 0, 0, 0);                    // 抛物面天线
     bowl.scale.y = 0.45; dish.add(bowl);
@@ -732,6 +765,13 @@ const BUILDING_BUILDERS = {
       g.add(t);
       g.add(cone(0.07, 0.1, 0xc0392b, dx - dx * 0.24, 0.64, dz - dz * 0.24));
     }
+    // 旋转搜索雷达
+    const radar = new THREE.Group(); radar.position.set(0, 0.6, 0);
+    radar.add(cyl(0.02, 0.03, 0.08, 0x8a939c, 0, 0, 0));
+    radar.add(box(0.28, 0.02, 0.09, 0xdde2e8, 0, 0.05, 0));
+    radar.add(box(0.02, 0.02, 0.28, 0xdde2e8, 0, 0.05, 0));
+    g.add(radar);
+    g.userData.spin = { obj: radar, speed: 1.6 };
     return g;
   },
   railgun(side) {
@@ -741,6 +781,14 @@ const BUILDING_BUILDERS = {
     for (const s of [-1, 1]) {                                    // 双导轨
       const rail = box(0.85, 0.05, 0.05, METAL, 0.3, 0.08, s * 0.09);
       rail.rotation.z = 0.28; tur.add(rail);
+    }
+    // 加速线圈 ×3（套在轨道上）
+    for (let i = 0; i < 3; i++) {
+      const coil = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.022, 6, 14), mat(0xc8a03c, { metal: 0.55, rough: 0.4 }));
+      coil.position.set(0.1 + i * 0.24, 0.1, 0);
+      coil.rotation.y = Math.PI / 2;
+      coil.rotation.z = 0.28;
+      tur.add(coil);
     }
     const core = box(0.7, 0.02, 0.06, 0xffb347, 0.3, 0.08, 0, { em: 0xffb347, emi: 1.2 });
     core.rotation.z = 0.28; tur.add(core);
