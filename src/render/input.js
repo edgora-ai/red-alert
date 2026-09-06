@@ -100,7 +100,7 @@ export class Input {
       if (this.superTarget) {
         const ok = w.issueCommand('player', { type: 'superstrike', x: t.x, y: t.y });
         if (ok) this.game.markers.push({ x: t.x, y: t.y, type: 'attack', ttl: 30, max: 30 });
-        this.superTarget = false;
+        this._clearSuperTarget();
         this.updateCursorState();
         return;
       }
@@ -136,7 +136,7 @@ export class Input {
       }
       this.dragStart = { x: px, y: py, shift: e.shiftKey };
     } else if (e.button === 2) {
-      if (this.superTarget) { this.superTarget = false; this.updateCursorState(); return; }
+      if (this.superTarget) { this._clearSuperTarget(); this.updateCursorState(); return; }
       if (w.sides.player.placing) { w.issueCommand('player', { type: 'cancelPlace' }); return; }
       if (this.attackMove && !e.shiftKey) { this.attackMove = false; this.updateCursorState(); return; }
       if (this.patrolMode && !e.shiftKey) { this.patrolMode = false; this.updateCursorState(); return; }
@@ -154,9 +154,15 @@ export class Input {
       return;
     }
     this.superTarget = true;
+    this.game.superTargeting = true; // 渲染层画落点预览圈
     this.attackMove = false;
     w.messages.push({ side: 'player', text: '选择轨道打击落点（右键取消）', ttl: 110 });
     this.updateCursorState();
+  }
+
+  _clearSuperTarget() {
+    this.superTarget = false;
+    this.game.superTargeting = false;
   }
 
   rightCommand(wx, wy, queued = false) {
@@ -386,7 +392,7 @@ export class Input {
         case 'escape':
           if (w.sides.player.placing) w.issueCommand('player', { type: 'cancelPlace' });
           this.attackMove = false;
-          this.superTarget = false;
+          this._clearSuperTarget();
           this.patrolMode = false;
           document.getElementById('settings')?.classList.add('hidden'); // 顺手收起设置面板
           break;

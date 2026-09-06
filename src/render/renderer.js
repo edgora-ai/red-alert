@@ -1190,6 +1190,33 @@ export class Renderer {
       this.rallyLine.visible = this.rallyFlag.visible = false;
     }
 
+    // 超武瞄准：落点预览圈跟随鼠标（青色杀伤半径圈 + 中心点，与实际打击半径一致）
+    if (game.superTargeting && game.mouseTile) {
+      if (!this.superAimRing) {
+        const g = new THREE.Group();
+        const ring = new THREE.Mesh(
+          new THREE.RingGeometry(ECON.super.radius - 0.16, ECON.super.radius, 48),
+          new THREE.MeshBasicMaterial({ color: 0x9fe8ff, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false, fog: false }),
+        );
+        ring.rotation.x = -Math.PI / 2;
+        ring.renderOrder = 6;
+        const dot = new THREE.Mesh(
+          new THREE.CircleGeometry(0.26, 20),
+          new THREE.MeshBasicMaterial({ color: 0x9fe8ff, transparent: true, opacity: 0.9, depthWrite: false, fog: false }),
+        );
+        dot.rotation.x = -Math.PI / 2;
+        dot.renderOrder = 6;
+        g.add(ring, dot);
+        this.superAimRing = g;
+        this.scene.add(g);
+      }
+      this.superAimRing.visible = true;
+      this.superAimRing.position.set(game.mouseTile.tx + 0.5, 0.08, game.mouseTile.ty + 0.5);
+      this.superAimRing.scale.setScalar(1 + Math.sin(performance.now() / 200) * 0.04);
+    } else if (this.superAimRing) {
+      this.superAimRing.visible = false;
+    }
+
     // Shift 队列航线：选中单位当前指令 + 排队点连线（职业玩家刚需）
     this.syncQueueLines(game, w);
     // 选中防御塔/修理厂：显示射程/工作半径圈（战术决策刚需）

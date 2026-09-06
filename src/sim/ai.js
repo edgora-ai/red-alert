@@ -119,7 +119,10 @@ export class Commander {
           else cycle = [...cycle, 'apoc'];
         }
         if (hasRadar && hasNPower && this.diff.incomeMul > 1.2) cycle = [...cycle, 'titan'];
-        if (playerAir) cycle = ['tyrant', 'hunter', 'hunter', 'tyrant', 'apoc'];
+        if (playerAir) {
+          // 对空应急编队：天启需核电站前置，没解锁时别把产能浪费在必然失败的下单上
+          cycle = hasRadar && hasNPower ? ['tyrant', 'hunter', 'hunter', 'tyrant', 'apoc'] : ['tyrant', 'hunter', 'hunter', 'tyrant'];
+        }
         item = cycle[this.armyCounter++ % cycle.length];
       }
       w.issueCommand(s, { type: 'produce', item });
