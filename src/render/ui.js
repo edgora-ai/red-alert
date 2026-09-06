@@ -29,6 +29,7 @@ export class UI {
 
     this.el = {
       credits: document.getElementById('credits'),
+      kills: document.getElementById('killsBadge'),
       powerWrap: document.getElementById('powerWrap'),
       powerFill: document.getElementById('powerFill'),
       power: document.getElementById('power'),
@@ -167,8 +168,9 @@ export class UI {
     if (++this.timer % 6 !== 0 && !this.world.winner) return; // 100ms 节流
     const w = this.world;
 
-    // 顶部栏：资金 + 电力条
+    // 顶部栏：资金 + 电力条 + 实时战况（击毁/损失）
     this.el.credits.textContent = `${Math.floor(w.credits.player)}`;
+    this.el.kills.textContent = `${w.stats.player.kills}/${w.stats.player.lost}`;
     const p = w.power.player;
     const pct = p.supply > 0 ? Math.min(100, (p.demand / p.supply) * 100) : 100;
     this.el.powerFill.style.width = pct + '%';

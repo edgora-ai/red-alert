@@ -156,11 +156,13 @@ function fireOne(world, e, w, target, off = 0) {
   if (w.projSpeed > 0) e.recoil = 5; // 炮管后坐（渲染动画用）
   if (world.unitDef(e)?.stealth) e.cloak = ECON.cloak.reveal; // 开火即现形
   // 枪口焰：磁暴线圈/激光塔等建筑即时能量武器从塔顶出弧，不再喷塔脚枪口焰；
-  // 飞行单位（基洛夫/无人机）携带高度，枪口焰跟着挂载点走而不是喷在地面
+  // 飞行单位（基洛夫/无人机）携带高度，枪口焰跟着挂载点走而不是喷在地面；
+  // 步兵枪短，焰口贴身（0.3）而非按载具的 0.55 悬在半格外
   if (!(e.kind === 'building' && w.projSpeed <= 0)) {
+    const mo = world.unitDef(e)?.inf ? 0.3 : 0.55;
     world.fx.push({
       type: 'muzzle',
-      x: e.x + Math.cos(e.dir) * 0.55, y: e.y + Math.sin(e.dir) * 0.55,
+      x: e.x + Math.cos(e.dir) * mo, y: e.y + Math.sin(e.dir) * mo,
       dir: e.dir, big: w.dmg >= 60, ttl: 4, max: 4,
       alt: world.unitDef(e)?.fly ? 2.2 : 0,
     });

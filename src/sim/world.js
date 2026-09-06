@@ -204,6 +204,15 @@ export class World {
     }
   }
 
+  // 事件音色提示：队伍里含载具 → 低音确认（听声辨部队）
+  idsHeavy(ids) {
+    for (const id of ids) {
+      const u = this.entities.get(id);
+      if (u?.kind === 'unit' && !UNITS[u.type]?.inf) return true;
+    }
+    return false;
+  }
+
   // ---------- 命令 ----------
   issueCommand(side, cmd) {
     switch (cmd.type) {
@@ -352,19 +361,20 @@ export class World {
 
   cmdMove(side, ids, x, y, mode, queued = false) {
     const offs = groupOffsets(ids.length);
+    const heavy = this.idsHeavy(ids);
     ids.forEach((id, i) => {
       const u = this.entities.get(id);
       if (!u || u.kind !== 'unit' || u.side !== side || u.dead) return;
       if (u.type === 'harvester' && mode === 'attackmove') return; // 采矿车不理会攻击移动，继续干活
       const order = { type: mode, x: x + offs[i].x, y: y + offs[i].y };
-      if (queued && u.order && u.order.type !== 'idle') { u.oq ??= []; u.oq.push(order); this.events.push({ type: 'move' }); return; }
+      if (queued && u.order && u.order.type !== 'idle') { u.oq ??= []; u.oq.push(order); this.events.push({ type: 'move', heavy }); return; }
       if (u.type === 'harvester' && mode === 'move') u.harvest = { state: 'idle', timer: 0 }; // 手动打断采矿
       u.oq = []; // 新指令清空旧队列（Shift 追加走 queued 分支）
       u.order = order;
       u.targetId = null;
       this.setPath(u, x + offs[i].x, y + offs[i].y, mode === 'move');
     });
-    this.events.push({ type: 'move' });
+    this.events.push({ type: 'move', heavy });
   }
 
   // 排队指令：Shift+右键追加，不打断当前任务
@@ -372,7 +382,7 @@ export class World {
     u.oq ??= [];
     if (u.oq.length > 12) u.oq.shift(); // 队列上限，防刷屏卡死
     u.oq.push(order);
-    this.events.push({ type: 'move' });
+    this.events.push({ type: 'move', heavy: this.idsHeavy([u.id]) });
   }
 
   // 从队列取下一条指令并执行；返回 false 表示队列已空
@@ -409,7 +419,7 @@ export class World {
       u.order = order; u.targetId = null;
       this.setPath(u, x, y);
     }
-    this.events.push({ type: 'move' });
+    this.events.push({ type: 'move', heavy: this.idsHeavy(ids) });
   }
 
   cmdHold(side, ids, queued = false) {
@@ -422,7 +432,7 @@ export class World {
       u.oq = [];
       u.order = order; u.path = null; u.targetId = null;
     }
-    this.events.push({ type: 'move' });
+    this.events.push({ type: 'move', heavy: this.idsHeavy(ids) });
   }
 
   cmdAttack(side, ids, targetId, queued = false) {
@@ -440,7 +450,7 @@ export class World {
       // 立刻向目标寻路：远距离点名也要马上动身（ combat 层 chase 分支负责后续重寻路）
       this.setPath(u, t.x, t.y);
     }
-    this.events.push({ type: 'move' });
+    this.events.push({ type: 'move', heavy: this.idsHeavy(ids) });
   }
 
   cmdHarvest(side, ids, x, y, queued = false) {
@@ -452,7 +462,7 @@ export class World {
       u.harvest = { state: 'idle', timer: 0 };
       u.order = { type: 'harvest' };
     }
-    this.events.push({ type: 'move' });
+    this.events.push({ type: 'move', heavy: this.idsHeavy(ids) });
   }
 
   cmdCapture(side, ids, targetId, queued = false) {

@@ -175,8 +175,8 @@ export class Sound {
       case 'place': this.place(S(e.x, e.y)); break;
       case 'ready': this.ready(); break;
       case 'error': this.error(); break;
-      case 'move': this.ack(520, 0.05, 0.06); break;
-      case 'select': this.ack(880, 0.04, 0.05); break;
+      case 'move': this.ack(e.heavy ? 340 : 520, 0.05, 0.06); break;   // 载具低音/步兵高音：听声辨部队
+      case 'select': this.ack(e.heavy ? 580 : 880, 0.04, 0.05); break;
       case 'capture': this.fanfare([523, 659, 784, 1046], 0.12, 'sine'); break;
       case 'promote': this.promote(); break;
       case 'underAttack': this.klaxon(S(e.x, e.y)); break; // 受击警报空间化：听得出威胁方向

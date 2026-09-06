@@ -270,7 +270,7 @@ export class Input {
       const ids = units.map(u => u.id);
       if (!shift) this.game.selection.clear();
       ids.forEach(id => this.game.selection.add(id));
-      if (ids.length) { this.sound.play({ type: 'select' }); this.game.userPlay = true; }
+      if (ids.length) { this.sound.play({ type: 'select', heavy: units.some(u => !this.world.unitDef(u)?.inf) }); this.game.userPlay = true; }
       return;
     }
 
@@ -291,7 +291,7 @@ export class Input {
     if (picked && picked.side === 'player') {
       this.game.selection.add(picked.id);
       this.game.userPlay = true;
-      this.sound.play({ type: 'select' });
+      this.sound.play({ type: 'select', heavy: picked.kind === 'unit' && !this.world.unitDef(picked)?.inf });
       const now = performance.now();
       if (this.lastClick && now - this.lastClick.t < 350 && this.lastClick.type === picked.type) {
         const ids = this.world.unitsOf('player')
