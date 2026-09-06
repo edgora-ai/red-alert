@@ -40,6 +40,9 @@ export const WEAPONS = {
   mirageW:   { name: '光束狙击炮',   dmg: 85,  dtype: 'energy',  range: 6.5, cooldown: 55,  projSpeed: 0,    canAir: false, splash: 0, color: '#c9f2ff' },
   kirovW:    { name: '重型航空炸弹', dmg: 80,  dtype: 'shell',   range: 4.5, cooldown: 45,  projSpeed: 0.45, canAir: false, splash: 1.1 },
   apocW:     { name: '双联反坦克导弹', dmg: 52, dtype: 'missile', range: 6,   cooldown: 55,  projSpeed: 0.55, canAir: true,  splash: 0.35, burst: 2, burstCd: 8 },
+  // —— 未来战争：科幻终极单位 ——
+  plasmaW:   { name: '等离子重炮',   dmg: 110, dtype: 'energy',  range: 7.5, cooldown: 75,  projSpeed: 0.45, canAir: false, splash: 0.7 },
+  droneW:    { name: '舰载自爆机群', dmg: 60,  dtype: 'missile', range: 9,   cooldown: 150, projSpeed: 0.32, canAir: true,  splash: 0.8, burst: 3, burstCd: 9 },
 };
 
 // 单位：speed 瓦片/s，sight 瓦片，buildTime 秒
@@ -65,6 +68,9 @@ export const UNITS = {
   mirage:   { name: '幻影坦克',       cost: 1600, buildTime: 24, hp: 380, armor: 'heavy', speed: 1.9, sight: 7, weapon: 'mirageW', producer: 'factory', prereq: ['radar'], side: 'player', stealth: true },
   kirov:    { name: '基洛夫重型飞艇', cost: 2400, buildTime: 30, hp: 1400, armor: 'air',  speed: 0.9, sight: 7, weapon: 'kirovW', producer: 'factory', prereq: ['radar', 'npower'], fly: true, side: 'enemy' },
   apoc:     { name: '天启突击坦克',   cost: 2800, buildTime: 40, hp: 1150, armor: 'heavy', speed: 1.1, sight: 6.5, weapon: 'apocW', producer: 'factory', prereq: ['radar', 'npower'], side: 'enemy' },
+  // —— 未来战争：科幻终极单位 ——
+  gunship:  { name: '浮空炮艇「晨曦」', cost: 3800, buildTime: 42, hp: 900, armor: 'air',  speed: 2.2, sight: 8, weapon: 'plasmaW', producer: 'factory', prereq: ['radar', 'npower'], fly: true, side: 'player' },
+  carrier:  { name: '空天航母「陨星」', cost: 6500, buildTime: 60, hp: 3200, armor: 'air', speed: 0.55, sight: 10, weapon: 'droneW', producer: 'factory', prereq: ['radar', 'npower'], fly: true, side: 'enemy' },
 };
 
 // 建筑：power 正=供电 负=耗电；produces 指可生产的单位/建筑列表
@@ -74,7 +80,7 @@ export const BUILDINGS = {
   npower:   { name: '核电站',       cost: 1200, buildTime: 24, w: 3, h: 3, hp: 750,  power: 250,  sight: 4, prereq: ['radar'] },
   refinery: { name: '矿石精炼厂',   cost: 1800, buildTime: 30, w: 3, h: 2, hp: 1000, power: -40,  sight: 5, grants: 'harvester', refinery: true },
   barracks: { name: '兵营',         cost: 500,  buildTime: 10, w: 2, h: 2, hp: 750,  power: -20,  sight: 5, produces: ['rifle', 'rocket', 'engineer'] },
-  factory:  { name: '战车工厂',     cost: 1800, buildTime: 32, w: 3, h: 3, hp: 1100, power: -30,  sight: 5, prereq: ['barracks'], produces: ['harvester', 'cheetah', 'tyrant', 'hunter', 'longsword', 'aurora', 'ghost', 'mcv', 'titan', 'prism', 'mirage', 'kirov', 'apoc'] },
+  factory:  { name: '战车工厂',     cost: 1800, buildTime: 32, w: 3, h: 3, hp: 1100, power: -30,  sight: 5, prereq: ['barracks'], produces: ['harvester', 'cheetah', 'tyrant', 'hunter', 'longsword', 'aurora', 'ghost', 'mcv', 'titan', 'prism', 'mirage', 'kirov', 'apoc', 'gunship', 'carrier'] },
   radar:    { name: '雷达站',       cost: 1200, buildTime: 20, w: 2, h: 2, hp: 850,  power: -50,  sight: 10, prereq: ['factory'], produces: ['ap', 'composite', 'engine', 'mining', 'super', 'lens', 'overload'] },
   laser:    { name: '激光防御塔',   cost: 800,  buildTime: 14, w: 1, h: 1, hp: 550,  power: -30,  sight: 7, weapon: 'laserT', defense: true },
   sam:      { name: '防空导弹阵地', cost: 700,  buildTime: 12, w: 1, h: 1, hp: 500,  power: -20,  sight: 9, weapon: 'samW', defense: true },

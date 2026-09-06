@@ -278,6 +278,13 @@ export class Sound {
         this.whoosh(0.4, 480, 2400, 0.5, out);
         this.thump(90, 0.22, 0.6, out, 0.02);
         break;
+      case 'droneW': // 舰载自爆机群：三连高频蜂鸣俯冲
+        for (let i = 0; i < 3; i++) this.whoosh(0.3, 900, 2800, 0.38, out, i * 0.09);
+        break;
+      case 'plasmaW': // 等离子重炮：低频轰鸣 + 电浆嘶鸣
+        this.tone({ freq: 90, dur: 0.32, type: 'sawtooth', gain: 0.38, slideTo: 38, out });
+        this.noise({ dur: 0.18, type: 'bandpass', freq: 2200, gain: 0.32, out, delay: 0.02 });
+        break;
       default:
         this.noise({ dur: 0.12, type: 'lowpass', freq: 700, gain: 0.5, out });
     }

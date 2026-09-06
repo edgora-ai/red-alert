@@ -483,6 +483,63 @@ function titan(side) {
   return g;
 }
 
+// 空天航母「陨星」（红军终极飞行单位）：扁平巨舰 + 舰岛 + 悬浮引擎阵 + 舰载机挂架
+function carrier(side) {
+  const h = HULL[side], a = ACCENT[side];
+  const g = new THREE.Group();
+  g.add(box(2.6, 0.28, 0.9, h, 0, 0, 0));                          // 主舰体
+  g.add(box(1.8, 0.16, 0.68, 0x3c444e, -0.1, 0.21, 0));            // 上层甲板
+  g.add(box(0.42, 0.3, 0.24, h, 0.28, 0.4, 0.22));                 // 舰岛（右舷）
+  g.add(box(0.16, 0.1, 0.16, 0x1a1e24, 0.28, 0.6, 0.22));          // 雷达罩
+  g.add(antenna(0.28, 0.64, 0.22, 0.3));
+  g.add(cyl(0.06, 0.09, 0.7, METAL, 1.45, 0.06, 0, { rz: -Math.PI / 2 })); // 舰首能量炮
+  g.add(cyl(0.12, 0.16, 0.06, 0x7df9ff, 1.78, 0.06, 0, { rz: -Math.PI / 2, em: 0x7df9ff, emi: 1.8 })); // 炮口辉光
+  // 四台悬浮引擎（尾部，旋翼模糊盘发光）
+  const rotors = [];
+  for (const [ex, ez] of [[-1.15, -0.28], [-1.15, 0.28], [-0.75, -0.34], [-0.75, 0.34]]) {
+    g.add(cyl(0.15, 0.19, 0.12, 0x2c343e, ex, -0.08, ez));
+    const r = cyl(0.2, 0.2, 0.02, 0x7df9ff, ex - 0.1, -0.08, ez, { rz: -Math.PI / 2, em: 0x7df9ff, emi: 1.5, alpha: 0.55 });
+    rotors.push(r); g.add(r);
+  }
+  g.userData.rotors = rotors;
+  // 舰载自爆机挂架（两舷 2+2）
+  for (const s of [-1, 1]) for (const dx of [-0.35, 0.35]) {
+    const drone = new THREE.Group();
+    drone.add(box(0.16, 0.03, 0.12, 0x2c343e, 0, 0, 0));
+    drone.add(box(0.02, 0.012, 0.1, 0x3c444e, 0.06, 0.005, 0));
+    drone.add(box(0.05, 0.02, 0.05, 0xc0392b, 0.09, 0, 0));
+    drone.position.set(dx, -0.22, s * 0.5);
+    g.add(drone);
+  }
+  // 阵营识别灯带（两舷）
+  g.add(box(2.3, 0.04, 0.02, a, -0.1, 0.06, 0.46, { em: a, emi: 0.5 }));
+  g.add(box(2.3, 0.04, 0.02, a, -0.1, 0.06, -0.46, { em: a, emi: 0.5 }));
+  return g;
+}
+
+// 浮空炮艇「晨曦」（蓝军科幻单位）：流线机身 + 双等离子吊舱 + 涵道风扇
+function gunship(side) {
+  const h = HULL[side], a = ACCENT[side];
+  const g = new THREE.Group();
+  g.add(cyl(0.16, 0.22, 0.8, h, 0, 0, 0, { rz: -Math.PI / 2 }));   // 流线机身
+  g.add(sph(0.1, 0x7df9ff, 0.42, -0.02, 0, { em: 0x7df9ff, emi: 1.4 })); // 前部传感球
+  g.add(box(0.5, 0.03, 0.5, 0x2c343e, -0.05, 0.15, 0));            // 环形顶翼盘
+  // 双等离子吊舱（炮口辉光）
+  for (const s of [-1, 1]) {
+    g.add(cyl(0.05, 0.06, 0.3, METAL, 0.15, -0.12, s * 0.2, { rz: -Math.PI / 2 }));
+    g.add(sph(0.05, 0x9fe8ff, 0.31, -0.12, s * 0.2, { em: 0x9fe8ff, emi: 1.8 }));
+  }
+  // 尾部双涵道风扇（旋转让模糊盘）
+  const rotors = [];
+  for (const s of [-1, 1]) {
+    const r = cyl(0.16, 0.16, 0.02, 0x181c22, -0.42, 0.12, s * 0.12, { alpha: 0.5 });
+    rotors.push(r); g.add(r);
+  }
+  g.userData.rotors = rotors;
+  g.add(box(0.12, 0.02, 0.02, a, -0.42, 0.2, 0, { em: a, emi: 0.5 })); // 尴部识别灯
+  return g;
+}
+
 // 幽灵武装无人机：四旋翼 + 机腹光电球
 function ghost(side) {
   const a = ACCENT[side];
@@ -889,10 +946,10 @@ export function makeWreck(heavy) {
 
 // ================= 入口 =================
 
-const UNIT_BUILDERS = { cheetah, tyrant, hunter, mlrs, longsword, aurora, reaper, harvester, mcv, ghost, titan, kirov, apoc, prism, mirage };
+const UNIT_BUILDERS = { cheetah, tyrant, hunter, mlrs, longsword, aurora, reaper, harvester, mcv, ghost, titan, kirov, apoc, prism, mirage, carrier, gunship };
 
 // 飞行单位悬停高度
-const FLY_Y = { ghost: 1.05, reaper: 1.45, kirov: 2.2 };
+const FLY_Y = { ghost: 1.05, reaper: 1.45, kirov: 2.2, gunship: 1.6, carrier: 2.8 };
 const INFANTRY = new Set(['rifle', 'rocket', 'sniper', 'engineer']);
 
 export function buildUnitModel(type, side) {

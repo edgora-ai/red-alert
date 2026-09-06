@@ -16,7 +16,7 @@ const TERRAIN = {
   water: '#10283e',
 };
 const TOP_Y = { yard: 1.5, power: 1.2, npower: 1.35, refinery: 1.1, barracks: 1.0, factory: 1.2, radar: 1.4, laser: 1.0, sam: 1.0, railgun: 1.0, repair: 1.0, outpost: 1.4, tesla: 1.1 };
-const FLY_Y = { ghost: 1.05, reaper: 1.45, kirov: 2.2 }; // 与 models.js 保持一致
+const FLY_Y = { ghost: 1.05, reaper: 1.45, kirov: 2.2, gunship: 1.6, carrier: 2.8 }; // 与 models.js 保持一致
 // 履带/轮式载具行驶时悬挂晃动
 const TRACKED = new Set(['cheetah', 'tyrant', 'hunter', 'mlrs', 'longsword', 'harvester', 'mcv', 'apoc', 'prism', 'mirage']);
 
@@ -498,7 +498,7 @@ export class Renderer {
       let rec = this.meshMap.get(e.id);
       if (!rec) {
         const group = e.kind === 'unit' ? buildUnitModel(e.type, e.side) : buildBuildingModel(e.type, e.side);
-        const unitTop = { ghost: 1.6, reaper: 1.95, titan: 1.4, kirov: 2.8, apoc: 0.95, prism: 0.8 }[e.type] ?? 0.65;
+        const unitTop = { ghost: 1.6, reaper: 1.95, titan: 1.4, kirov: 2.8, apoc: 0.95, prism: 0.8, gunship: 1.2, carrier: 1.0 }[e.type] ?? 0.65;
         rec = {
           group, kind: e.kind,
           topY: e.kind === 'building' ? (TOP_Y[e.type] ?? 1) : unitTop,

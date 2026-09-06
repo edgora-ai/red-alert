@@ -832,5 +832,41 @@ check('天启坦克双联导弹可对空', drone.hp < drone.maxHp, `ghost hp ${M
     `placingReady=${placingReady} placingNow=${world.sides.player.placing}`);
 }
 
+
+// —— 阶段29：未来战争单位（空天航母 / 浮空炮艇 / 阵营门） ——
+check('阵营门：玩家无法生产空天航母、AI 无法生产浮空炮艇',
+  world.canProduce('player', 'carrier').reason === '阵营限定'
+  && world.canProduce('enemy', 'gunship').reason === '阵营限定');
+{
+  // 浮空炮艇等离子重炮：对地溅射波及第二目标
+  const gsp = freeSpotN(56, 34, 1);
+  const gs = world.addUnit('player', 'gunship', gsp.tx + 0.5, gsp.ty + 0.5);
+  gs.order = { type: 'hold', x: gs.x, y: gs.y };
+  const t1 = world.addUnit('enemy', 'tyrant', gsp.tx + 3.5, gsp.ty + 0.5);
+  const t2 = world.addUnit('enemy', 'tyrant', gsp.tx + 4.0, gsp.ty + 0.5); // 0.5 格间隔：落点在 0.7 溅射半径内（0.7 恰在浮点边界会被裁）
+  t1.order = { type: 'idle' }; t1.path = null;
+  t2.order = { type: 'idle' }; t2.path = null;
+  const t2h0 = t2.hp;
+  for (let i = 0; i < 300 && t2.hp >= t2h0; i++) world.tick();
+  check('浮空炮艇等离子溅射波及邻接目标', t1.hp < t1.maxHp && t2.hp < t2h0,
+    `t1=${Math.round(t1.hp)}/${t1.maxHp} t2=${Math.round(t2.hp)}/${t2.maxHp}`);
+  world.killEntity(gs); world.killEntity(t1); world.killEntity(t2);
+}
+{
+  // 空天航母舰载自爆机群：三连弹幕 + 命中建筑
+  const csp = freeSpot2x2(44, 58);
+  const bTarget = world.addBuilding('player', 'power', csp.tx, csp.ty);
+  const cvt = world.addUnit('enemy', 'carrier', csp.tx + 0.5, csp.ty + 8); // 8 格距离：弹幕 3 机同空域（近距会逐发落地错开）
+  cvt.order = { type: 'attack' };
+  cvt.targetId = bTarget.id;
+  let maxProj = 0;
+  const bhp0 = bTarget.hp;
+  for (let i = 0; i < 400 && bTarget.hp >= bhp0; i++) { world.tick(); maxProj = Math.max(maxProj, world.projectiles.length); }
+  check('空天航母舰载机群弹幕并命中目标', maxProj >= 3 && bTarget.hp < bhp0,
+    `maxProj=${maxProj} hp ${Math.round(bhp0)} -> ${Math.round(bTarget.hp)}`);
+  world.killEntity(cvt);
+  if (!bTarget.dead) world.killEntity(bTarget);
+}
+
 console.log(`\n${failures === 0 ? '全部通过 ✔' : failures + ' 项失败 ✘'}`);
 process.exit(failures === 0 ? 0 : 1);
