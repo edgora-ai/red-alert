@@ -43,7 +43,7 @@ export function startDemo({ world, game, camera, ai }) {
     return null;
   }
 
-  const queue = ['power', 'barracks', 'factory', 'radar', 'npower'];
+  const queue = ['power', 'refinery', 'barracks', 'factory', 'radar', 'npower']; // 精炼厂第二：展示完整采矿经济循环
   const cycle = ['cheetah', 'prism', 'hunter', 'mlrs', 'titan', 'mirage', 'sniper'];
   let attacked = false;
   let waveCd = 0;
