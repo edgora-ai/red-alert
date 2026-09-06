@@ -16,6 +16,22 @@
 
 ---
 
+## v10.6（第 37/100 轮）：重开换绑完整性审查
+
+| # | 审查发现 | 修复/优化 |
+|---|---|---|
+| 1 | **【严重】旧 Input/Minimap 监听跨局泄漏**：重开时旧实例的 window 键鼠监听仍在——N 次重开后按键触发 N 套幽灵命令作用于旧世界 | Input.destroy()/Minimap.destroy() 具名化移除全部监听；startGame 重开前调用 |
+| 2 | **上局败北后新局没有配乐**：`musicPaused` 跨局残留（淡出状态不随重开复位） | startGame 复位 `sound.musicPaused = false` |
+| 3 | setWorld 不 dispose 旧实体资源（每次重开泄漏整场单位的几何/材质/血条纹理） | setWorld 补齐 group traverse dispose + 血条/袖标/选中环释放 |
+| 4 | **建造蒙版跨局陈旧**：新局 tickCount 回绕，蒙版重建条件长期不满足 | setWorld 重置蒙版重建键（_bzItem/_bzTick） |
+
+### 验证记录
+
+- `npm test`：91 项断言全过（无回归）
+- 浏览器实测：连开两局（标准→河流）：world/input 均换绑、河流带 688 格生成、musicPaused 复位，零 JS 错误
+
+---
+
 ## v10.5（第 36/100 轮）：操作安全审查——空格误重开修复
 
 | # | 审查发现 | 修复/优化 |

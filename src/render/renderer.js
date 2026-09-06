@@ -1165,9 +1165,13 @@ export class Renderer {
     this.terrainLayers.length = 0;
     for (const [, rec] of this.meshMap) {
       this.scene.remove(rec.group);
-      if (rec.ring) this.scene.remove(rec.ring);
+      if (rec.ring) { this.scene.remove(rec.ring); rec.ring.geometry.dispose(); rec.ring.material.dispose(); }
+      if (rec.bar) { rec.barTex?.dispose(); rec.bar.material.dispose(); }
+      if (rec.chev) { rec.chevTex?.dispose(); rec.chev.material.dispose(); }
+      rec.group.traverse(m => { if (m.isMesh) { m.geometry.dispose(); m.material.dispose?.(); } });
     }
     this.meshMap.clear();
+    this._bzItem = null; this._bzTick = -999; // 建造蒙版重建（tickCount 回绕防陈旧蒙版）
     this.trailMap.clear();
     this.projMeshMap?.clear();
     this.projPool?.forEach(m => { m.visible = false; });

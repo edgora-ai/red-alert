@@ -17,9 +17,9 @@ export class Input {
     this.mouse = { x: 0, y: 0, inside: false };
     this.selboxEl = document.getElementById('selbox');
 
-    canvas.addEventListener('contextmenu', e => e.preventDefault());
+    canvas.addEventListener('contextmenu', this._ctxMenu = e => e.preventDefault());
     // 中键拖拽平移视角（经典 RTS 右键拖屏的替代，右键已用于命令）
-    canvas.addEventListener('mousedown', e => {
+    canvas.addEventListener('mousedown', this._onMd = e => {
       if (e.button === 1) {
         e.preventDefault();
         this.panDrag = { x: e.clientX, y: e.clientY, cx: this.cam.x, cy: this.cam.y };
@@ -28,7 +28,7 @@ export class Input {
       }
       this.onDown(e);
     });
-    window.addEventListener('mousemove', e => {
+    window.addEventListener('mousemove', this._onPanMove = e => {
       if (this.panDrag) {
         const dx = (e.clientX - this.panDrag.x) / Math.max(1, this.renderer.vw) * this.cam.dist * 1.1;
         const dy = (e.clientY - this.panDrag.y) / Math.max(1, this.renderer.vw) * this.cam.dist * 1.1;
@@ -38,14 +38,28 @@ export class Input {
         this.cam.y = Math.min(this.world.h, Math.max(0, this.panDrag.cy - (ry * dx + fy * dy)));
       }
     });
-    window.addEventListener('mouseup', e => { if (e.button === 1) this.panDrag = null; });
+    window.addEventListener('mouseup', this._onPanUp = e => { if (e.button === 1) this.panDrag = null; });
     // 拖拽跟踪挂 window：拖出画布也能继续/完成框选
-    window.addEventListener('mousemove', e => this.onMove(e));
-    window.addEventListener('mouseup', e => this.onUp(e));
-    canvas.addEventListener('mouseleave', () => { this.mouse.inside = false; if (!this.dragStart) this.game.mouseTile = null; });
-    canvas.addEventListener('wheel', e => this.onWheel(e), { passive: false });
-    window.addEventListener('keydown', e => this.onKey(e, true));
-    window.addEventListener('keyup', e => this.onKey(e, false));
+    window.addEventListener('mousemove', this._onMove = e => this.onMove(e));
+    window.addEventListener('mouseup', this._onUp = e => this.onUp(e));
+    canvas.addEventListener('mouseleave', this._onMl = () => { this.mouse.inside = false; if (!this.dragStart) this.game.mouseTile = null; });
+    canvas.addEventListener('wheel', this._onWh = e => this.onWheel(e), { passive: false });
+    window.addEventListener('keydown', this._onKeyDn = e => this.onKey(e, true));
+    window.addEventListener('keyup', this._onKeyUp = e => this.onKey(e, false));
+  }
+
+  // 开局重开：移除全部监听（否则旧 Input 幽灵命令作用于旧世界）
+  destroy() {
+    this.cv.removeEventListener('contextmenu', this._ctxMenu);
+    this.cv.removeEventListener('mousedown', this._onMd);
+    this.cv.removeEventListener('mouseleave', this._onMl);
+    this.cv.removeEventListener('wheel', this._onWh);
+    window.removeEventListener('mousemove', this._onPanMove);
+    window.removeEventListener('mouseup', this._onPanUp);
+    window.removeEventListener('mousemove', this._onMove);
+    window.removeEventListener('mouseup', this._onUp);
+    window.removeEventListener('keydown', this._onKeyDn);
+    window.removeEventListener('keyup', this._onKeyUp);
   }
 
   // 画布内坐标（钳制到画布范围）

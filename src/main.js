@@ -74,6 +74,7 @@ function startGame() {
   try {
     if (minimap) minimap.setWorld(world);
     else minimap = new Minimap(document.getElementById('minimap'), world, camera, game);
+    input?.destroy(); // 旧监听不拆会跨局泄漏（幽灵命令作用于旧世界）
     input = new Input(game, canvas, world, camera, sound, renderer);
     ui = new UI(game, world, sound, renderer);
     ui.bindSuper(() => input.startSuperTarget());
@@ -89,6 +90,8 @@ function startGame() {
   if (ui) ui.world = world;
   window.addEventListener('resize', () => renderer?.resize());
 
+  // 上局败北标记复位：否则新局配乐保持淡出无声
+  if (sound) sound.musicPaused = false;
   window.__dbg = { world, game, camera, renderer, input, sound, ui, ai };
   if (ui) ui.el.diffBadge.textContent = `AI · ${ai.diff.name} · ${mode.name}`;
   startEl.classList.add('hidden');

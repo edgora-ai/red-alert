@@ -28,8 +28,8 @@ export class Minimap {
       this.cam.y = p.y;
       if (this.game) this.game.userCam = true; // 小地图跳转 = 用户接管相机
     };
-    canvas.addEventListener('contextmenu', e => e.preventDefault());
-    canvas.addEventListener('mousedown', e => {
+    canvas.addEventListener('contextmenu', this._ctx = e => e.preventDefault());
+    canvas.addEventListener('mousedown', this._onMd = e => {
       if (e.button === 2) {
         // 右键小地图 = 直接下命令（移动/攻击），Shift=排队
         const p = toWorld(e);
@@ -40,8 +40,16 @@ export class Minimap {
       if (e.button !== 0) return;
       jump(e); this.dragging = true;
     });
-    canvas.addEventListener('mousemove', e => { if (this.dragging) jump(e); });
-    window.addEventListener('mouseup', () => { this.dragging = false; });
+    canvas.addEventListener('mousemove', this._onMv = e => { if (this.dragging) jump(e); });
+    window.addEventListener('mouseup', this._onMup = () => { this.dragging = false; });
+  }
+
+  // 开局重开：移除监听（旧页签地图的幽灵跳转/命令）
+  destroy() {
+    this.cv.removeEventListener('contextmenu', this._ctx);
+    this.cv.removeEventListener('mousedown', this._onMd);
+    this.cv.removeEventListener('mousemove', this._onMv);
+    window.removeEventListener('mouseup', this._onMup);
   }
 
   // main 注入：右键小地图命令回调 (x, y, queued)
