@@ -143,8 +143,9 @@ function smoothPath(world, sx, sy, path) {
   const out = [];
   let ax = sx, ay = sy;
   let i = 0;
+  const LOOKAHEAD = 24; // 前看窗口：全程前看是 O(n²) 视线检测，长路径峰值可到几十万次阻挡查询
   while (i < path.length) {
-    let j = path.length - 1;
+    let j = Math.min(path.length - 1, i + LOOKAHEAD);
     for (; j > i; j--) {
       const bx = Math.floor(path[j].x), by = Math.floor(path[j].y);
       if (lineClear(world, Math.floor(ax), Math.floor(ay), bx, by)) break;

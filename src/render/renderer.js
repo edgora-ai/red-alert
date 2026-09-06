@@ -485,6 +485,14 @@ export class Renderer {
       const ud = rec.group.userData;
       const dt = this.animDt;
 
+      // 战争迷雾剔除：雾中敌方单位整体隐藏——血条/袖标 depthTest:false 且 renderOrder 最高，
+      // 不剔除会直接穿透迷雾泄露敌情；建筑探索过（fog>=1）即常驻显示，单位须当前可见（fog=2）
+      if (e.side !== 'player') {
+        const fv = w.fog[w.idx(Math.floor(e.x), Math.floor(e.y))];
+        rec.group.visible = e.kind === 'building' ? fv >= 1 : fv >= 2;
+        if (!rec.group.visible) continue; // 看不见的敌人跳过全部动画/血条计算（顺带省 CPU）
+      }
+
       // 建筑落成动画（0.5s 从地面立起）
       if (rec.kind === 'building' && rec.group.scale.y < 1) {
         rec.group.scale.y = Math.min(1, rec.group.scale.y + dt * 2.1);
@@ -935,11 +943,11 @@ export class Renderer {
       } else if (f.type === 'muzzle') {
         if (!f._done) {
           f._done = true;
-          this.particles.muzzle(f.x, f.y, f.dir, f.big);
+          this.particles.muzzle(f.x, f.y, f.dir, f.big, f.alt > 0 ? f.alt : 0.4);
           if (f.big) {
             const light = this.boomLights.find(l => !l.visible);
             if (light) {
-              light.position.set(f.x, 0.6, f.y);
+              light.position.set(f.x, f.alt > 0 ? f.alt : 0.6, f.y);
               light.intensity = 5;
               light.distance = 6;
               light.visible = true;

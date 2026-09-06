@@ -145,7 +145,8 @@ export class UI {
       if (def.power) rows.push(def.power > 0 ? `供电 +${def.power}` : `耗电 ${-def.power}`);
       if (w) rows.push(`火力 ${w.dmg} / ${w.cooldown / 30}s · 射程 ${w.range}${w.canAir ? ' · 可对空' : ''}`);
       if (def.repair) rows.push('自动维修范围内载具（按耐久扣费）');
-      if (def.produces) rows.push('生产：' + def.produces.filter(t => BUILDINGS[t]).map(t => BUILDINGS[t].name).join('、'));
+      // 阵营限定项（如红军磁暴线圈）不进玩家侧生产列表
+      if (def.produces) rows.push('生产：' + def.produces.filter(t => BUILDINGS[t] && BUILDINGS[t].side !== 'enemy').map(t => BUILDINGS[t].name).join('、'));
     }
     if (def.prereq) rows.push(`<span class="tt-sub">前置：${def.prereq.map(t => BUILDINGS[t].name).join('/')}</span>`);
     this.el.tooltip.innerHTML = `<div class="tt-name">${def.name}</div>` + rows.map(r => `<div>${r}</div>`).join('');
@@ -267,7 +268,7 @@ export class UI {
   updateSelInfo() {
     const sel = [...this.game.selection].map(id => this.world.entities.get(id)).filter(Boolean);
     if (!sel.length) { this.el.selinfo.innerHTML = '<span style="color:var(--dim)">点击单位查看详情</span>'; return; }
-    const STANCE = { hold: '固守', guard: '警戒', patrol: '巡逻', attackmove: '攻击移动', attack: '攻击', move: '移动', harvest: '采矿' };
+    const STANCE = { hold: '固守', guard: '警戒', patrol: '巡逻', attackmove: '攻击移动', attack: '攻击', move: '移动', harvest: '采矿', capture: '占领' };
     if (sel.length === 1) {
       const e = sel[0];
       const def = this.world.defOf(e);

@@ -75,7 +75,7 @@ function barrel(len, r, x, y, z) {
   g.userData.baseX = x;
   return g;
 }
-function wheels(n, r, width, xs, z) {
+function wheels(r, width, xs, z) {
   const g = new THREE.Group();
   for (const x of xs) for (const s of [-1, 1])
     g.add(cyl(r, r, width, DARK, x, r, s * z, { rx: Math.PI / 2, seg: 10 }));
@@ -191,7 +191,7 @@ function hunter(side) {
   g.add(box(0.66, 0.2, 0.4, h, 0, 0.22, 0));
   const nose = box(0.14, 0.14, 0.36, h, 0.38, 0.2, 0);
   nose.rotation.z = -0.45; g.add(nose);
-  g.add(wheels(6, 0.09, 0.06, [-0.24, 0, 0.24], 0.23));
+  g.add(wheels(0.09, 0.06, [-0.24, 0, 0.24], 0.23));
   g.add(antenna(-0.3, 0.3, -0.1, 0.28));                         // 传感/通信桅杆
   const tur = new THREE.Group(); tur.position.set(-0.05, 0.36, 0);
   for (const s of [-1, 1]) {
@@ -213,7 +213,7 @@ function mlrs(side) {
   g.add(box(0.2, 0.2, 0.38, h, 0.36, 0.28, 0));                  // 装甲驾驶室
   g.add(box(0.14, 0.07, 0.32, 0x1a1e24, 0.44, 0.31, 0));         // 防弹风挡
   g.add(box(0.1, 0.1, 0.36, 0x3c444e, 0.2, 0.24, 0));            // 动力舱
-  g.add(wheels(6, 0.1, 0.06, [-0.32, -0.05, 0.26], 0.24));
+  g.add(wheels(0.1, 0.06, [-0.32, -0.05, 0.26], 0.24));
   const tur = new THREE.Group(); tur.position.set(-0.16, 0.24, 0);
   const pod = box(0.42, 0.26, 0.34, 0x3c444e, 0.02, 0.16, 0);    // 发射箱
   pod.rotation.z = 0.42;
@@ -239,7 +239,7 @@ function longsword(side) {
   g.add(box(0.8, 0.1, 0.4, h, 0, 0.16, 0));                      // 底盘
   g.add(box(0.18, 0.18, 0.38, h, 0.32, 0.3, 0));                 // 驾驶室
   g.add(box(0.16, 0.06, 0.34, 0x1a1e24, 0.4, 0.26, 0));          // 风挡
-  g.add(wheels(8, 0.1, 0.06, [-0.3, -0.1, 0.12, 0.3], 0.23));
+  g.add(wheels(0.1, 0.06, [-0.3, -0.1, 0.12, 0.3], 0.23));
   // 液压支撑腿 ×4（起竖发射姿态）
   for (const [lx, lz] of [[-0.32, 0.22], [-0.32, -0.22], [0.22, 0.22], [0.22, -0.22]])
     g.add(cyl(0.028, 0.038, 0.12, 0x3c444e, lx, 0.08, lz));
@@ -293,7 +293,7 @@ function harvester(side) {
   ore.add(oct(0.07, 0xd4af37, -0.1, 0.08, -0.09, { em: 0xd4af37, emi: 0.5 }));
   ore.add(oct(0.06, 0xffe08a, 0, 0.1, -0.02, { em: 0xffe08a, emi: 0.6 }));
   g.add(ore);
-  g.add(wheels(6, 0.11, 0.08, [-0.32, 0, 0.32], 0.27));
+  g.add(wheels(0.11, 0.08, [-0.32, 0, 0.32], 0.27));
   g.userData.oreFill = ore;
   return g;
 }
@@ -313,7 +313,7 @@ function mcv(side) {
   const beacon = sph(0.038, 0xffc94d, -0.44, 0.56, 0, { em: 0xffc94d, emi: 1.8 }); // 展开警示灯
   g.add(beacon);
   g.userData.bob = { obj: beacon, y: 0.56 };
-  g.add(wheels(8, 0.13, 0.09, [-0.42, -0.14, 0.14, 0.42], 0.32));
+  g.add(wheels(0.13, 0.09, [-0.42, -0.14, 0.14, 0.42], 0.32));
   return g;
 }
 

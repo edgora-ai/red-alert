@@ -308,8 +308,13 @@ export class World {
       if (side === 'player') { this.messages.push({ side, text: '无法在此建造', ttl: 60 }); this.events.push({ type: 'error' }); }
       return false;
     }
-    // 落点里的单位推开到旁边（经典红警行为）
+    // 落点里的单位推开到旁边（经典红警行为）。
+    // 先用哨兵占位锁住脚印再推人：否则 nearestOpen 可能把单位推进同一脚印的相邻格，
+    // 建筑落成照样罩住它（-2 占位对 isBlocked 生效，addBuilding 会覆写成正式 id）
     const def = BUILDINGS[item];
+    for (let dy = 0; dy < def.h; dy++)
+      for (let dx = 0; dx < def.w; dx++)
+        this.bgrid[this.idx(tx + dx, ty + dy)] = -2;
     for (const u of this.unitsInFootprint(tx, ty, def.w, def.h)) {
       const alt = nearestOpen(this, Math.floor(u.x), Math.floor(u.y), 6);
       if (alt) { u.x = alt.x + 0.5; u.y = alt.y + 0.5; u.path = null; }
@@ -467,6 +472,14 @@ export class World {
       if (!ok) {
         if (side === 'player') { this.messages.push({ side, text: '此处无法展开', ttl: 60 }); this.events.push({ type: 'error' }); }
         continue;
+      }
+      // 脚印内的单位先推出去（与 cmdPlace 一致）：哨兵先占位，防止被推进同脚印相邻格
+      for (let dy = 0; dy < def.h; dy++)
+        for (let dx = 0; dx < def.w; dx++)
+          this.bgrid[this.idx(tx + dx, ty + dy)] = -2;
+      for (const v of this.unitsInFootprint(tx, ty, def.w, def.h)) {
+        const alt = nearestOpen(this, Math.floor(v.x), Math.floor(v.y), 6);
+        if (alt) { v.x = alt.x + 0.5; v.y = alt.y + 0.5; v.path = null; }
       }
       this.entities.delete(u.id);
       this.addBuilding(side, deploys, tx, ty);

@@ -451,5 +451,49 @@ check('天启坦克双联导弹可对空', drone.hp < drone.maxHp, `ghost hp ${M
   check('变卖建筑产生入账事件（金币音/飘字）', world.events.some(e => e.type === 'deposit') || world.events.length > evBefore);
 }
 
+// —— 阶段15：v8 第二轮审查修复回归（守备队保留 / MCV 展开推开单位 / 飞行枪口焰高度） ——
+// 15.1 AI 进攻波绝不调动 hold/guard 守备队（修复前守备驻军被一波带空）
+{
+  const w3 = createSkirmish(777);
+  const ai3 = new Commander(w3, 'enemy', 'normal');
+  for (let i = 0; i < 8; i++) {
+    const u = w3.addUnit('enemy', 'tyrant', 80 + (i % 4) * 1.2, 20 + Math.floor(i / 4) * 2);
+    u.path = null;
+  }
+  const holders = w3.unitsOf('enemy').slice(-2);
+  w3.issueCommand('enemy', { type: 'hold', ids: holders.map(u => u.id) });
+  ai3.waveCd = 0; ai3.waveNo = 0;
+  ai3.launchWaves();
+  check('AI 波次不拉走固守守备队', holders.every(u => w3.entities.get(u.id)?.order?.type === 'hold'),
+    `orders=${holders.map(u => w3.entities.get(u.id)?.order?.type).join(',')}`);
+  check('AI 波次正常发起（空闲部队被调动）', w3.unitsOf('enemy').some(u => u.order?.type === 'attackmove'));
+}
+// 15.2 MCV 展开前推开脚印内单位（修复前单位被落成的基地罩住卡死）
+{
+  const dsp = freeSpotN(36, 66, 3);
+  const mcv2 = world.addUnit('player', 'mcv', dsp.tx + 1.5, dsp.ty + 1.5);
+  const squatter = world.addUnit('player', 'rifle', dsp.tx + 1.5, dsp.ty + 1.5);
+  world.issueCommand('player', { type: 'deploy', ids: [mcv2.id] });
+  const newYard = world.buildingsOf('player').find(b => b.type === 'yard' && b.tx === dsp.tx && b.ty === dsp.ty);
+  check('MCV 就地展开成功', !!newYard);
+  const inside = squatter.x >= dsp.tx && squatter.x <= dsp.tx + 3 && squatter.y >= dsp.ty && squatter.y <= dsp.ty + 3;
+  check('展开脚印单位被推出（不被罩进建筑）', !inside && !world.isBlocked(Math.floor(squatter.x), Math.floor(squatter.y)),
+    `at ${squatter.x.toFixed(1)},${squatter.y.toFixed(1)}`);
+  world.killEntity(squatter);
+  if (newYard) world.killEntity(newYard);
+}
+// 15.3 飞行单位开火枪口焰携带飞行高度（修复前喷在自己脚下的地面上）
+{
+  const gsp = freeSpotN(44, 52, 1);
+  const gh = world.addUnit('player', 'ghost', gsp.tx + 0.5, gsp.ty + 0.5);
+  const gtgt = world.addUnit('enemy', 'rifle', gsp.tx + 3.5, gsp.ty + 0.5);
+  gh.order = { type: 'attack', targetId: gtgt.id };
+  gh.targetId = gtgt.id;
+  world.tick();
+  const mz = world.fx.find(f => f.type === 'muzzle' && Math.abs(f.x - gh.x) < 1 && Math.abs(f.y - gh.y) < 1);
+  check('飞行单位枪口焰在飞行高度（不喷地面）', !!mz && mz.alt >= 2, `alt=${mz?.alt}`);
+  world.killEntity(gh); world.killEntity(gtgt);
+}
+
 console.log(`\n${failures === 0 ? '全部通过 ✔' : failures + ' 项失败 ✘'}`);
 process.exit(failures === 0 ? 0 : 1);

@@ -199,10 +199,10 @@ export class Particles {
 
   setCamera(cam3) { this.cam = cam3; }
 
-  fireball(x, z, r, dur = 0.55) {
+  fireball(x, z, r, dur = 0.55, alt = null) {
     const s = this.sprites[this.spriteI++ % this.sprites.length];
     s.t = 0; s.dur = dur; s.r = r;
-    s.m.position.set(x, r * 0.5 + 0.25, z);
+    s.m.position.set(x, alt ?? r * 0.5 + 0.25, z);
     s.m.visible = true;
   }
 
@@ -283,18 +283,18 @@ export class Particles {
     this.scorch(x, z, r * 1.5);
   }
 
-  muzzle(x, z, dir, big) {
-    this.fireball(x, z, big ? 0.55 : 0.32, 0.16);
+  muzzle(x, z, dir, big, alt = 0.4) {
+    this.fireball(x, z, big ? 0.55 : 0.32, 0.16, alt);
     // 出膛烟团
     this.spawn({
-      layer: 'smoke', x: x + Math.cos(dir) * 0.2, y: 0.42, z: z + Math.sin(dir) * 0.2,
+      layer: 'smoke', x: x + Math.cos(dir) * 0.2, y: alt, z: z + Math.sin(dir) * 0.2,
       vx: Math.cos(dir) * 1.6, vy: 0.3, vz: Math.sin(dir) * 1.6,
       life: 0.5, size: 0.14, sizeEnd: 0.5, col0: 0xb8b4ac, col1: 0x6a675f, alpha: 0.3, drag: 3,
     });
     for (let i = 0; i < (big ? 5 : 3); i++) {
       const a = dir + (Math.random() - 0.5) * 0.7, sp = 3 + Math.random() * 4;
       this.spawn({
-        x, y: 0.38, z, vx: Math.cos(a) * sp, vy: 0.5 + Math.random(), vz: Math.sin(a) * sp,
+        x, y: alt - 0.04, z, vx: Math.cos(a) * sp, vy: 0.5 + Math.random(), vz: Math.sin(a) * sp,
         life: 0.1 + Math.random() * 0.12, size: 0.07, col0: 0xffd880, col1: 0xff7010, alpha: 1, grav: -4,
       });
     }

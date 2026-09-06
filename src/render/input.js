@@ -109,11 +109,16 @@ export class Input {
         w.issueCommand('player', { type: 'build', tx: t.x, ty: t.y });
         return;
       }
-      // A 攻击移动模式（Shift=排队追加，不退出模式）
+      // A 攻击移动模式（Shift=排队追加，不退出模式）；点到具体敌人=点名攻击（经典 RTS 手感）
       if (this.attackMove) {
         const ids = this.selectedUnits().map(u => u.id);
         if (ids.length) {
-          w.issueCommand('player', { type: 'attackmove', ids, x: t.x, y: t.y, queued: e.shiftKey });
+          const foe = this.pickAt(t.x, t.y);
+          if (foe && foe.side !== 'player') {
+            w.issueCommand('player', { type: 'attack', ids, targetId: foe.id, queued: e.shiftKey });
+          } else {
+            w.issueCommand('player', { type: 'attackmove', ids, x: t.x, y: t.y, queued: e.shiftKey });
+          }
           this.game.markers.push({ x: t.x, y: t.y, type: 'attack', ttl: 30, max: 30 });
         }
         if (!e.shiftKey) { this.attackMove = false; this.updateCursorState(); }
@@ -398,7 +403,9 @@ export class Input {
           if (/^[1-9]$/.test(k)) {
             if (e.ctrlKey || e.metaKey) { this.groups[k] = ids; e.preventDefault(); }
             else if (this.groups[k]?.length) {
-              this.game.selection = new Set(this.groups[k].filter(id => w.entities.has(id)));
+              // 召回即剔除死亡/失散 id 并持久化，编组不会越用越"虚"
+              this.groups[k] = this.groups[k].filter(id => w.entities.has(id));
+              this.game.selection = new Set(this.groups[k]);
               this.sound.play({ type: 'select' });
               // 双击编组键：视角跳到编组中心
               const now2 = performance.now();

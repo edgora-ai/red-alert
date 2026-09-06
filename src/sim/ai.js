@@ -186,10 +186,13 @@ export class Commander {
 
   // 进攻波次：攒够一拨、间隔冷却过后就 A 过去（规模随难度与波次增长）
   // 注意：tick() 每 15 world tick 才调一次 launchWaves，waveCd/waveGap 按决策次数口径
+  // 固守/警戒是守备姿态：绝不被波次调走（否则防守塔后的驻军被一波带空）
   launchWaves() {
     const w = this.world, s = this.side;
     if (this.waveCd > 0) { this.waveCd -= 15; return; }
-    const army = w.unitsOf(s).filter(u => u.weapon && !u.path && u.order?.type !== 'attackmove' && u.order?.type !== 'attack');
+    const army = w.unitsOf(s).filter(u => u.weapon && !u.path
+      && u.order?.type !== 'attackmove' && u.order?.type !== 'attack'
+      && u.order?.type !== 'hold' && u.order?.type !== 'guard');
     const need = Math.min(this.diff.waveBase + this.waveNo * this.diff.waveStep, this.diff.maxWave);
     if (army.length < need) return;
     // 目标：优先玩家建造厂，其次任意玩家建筑
