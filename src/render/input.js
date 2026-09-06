@@ -1,6 +1,6 @@
 // 输入：框选、命令下发、相机控制（平移/旋转/缩放）、快捷键、编队
 
-import { T } from '../config.js';
+import { T, BUILDINGS } from '../config.js';
 
 export class Input {
   constructor(game, canvas, world, camera, sound, renderer) {
@@ -171,12 +171,16 @@ export class Input {
     const buildings = this.selectedBuildings();
     if (!units.length && !buildings.length) return;
 
-    // 只选中生产建筑：右键设集结点
-    if (!units.length && buildings.length === 1) {
-      const b = buildings[0];
-      w.issueCommand('player', { type: 'rally', id: b.id, x: wx, y: wy });
-      this.game.markers.push({ x: wx, y: wy, type: 'move', ttl: 30, max: 30 });
-      return;
+    // 只选中生产建筑：右键批量设集结点（多选工厂/兵营一次全部改集结）
+    if (!units.length && buildings.length) {
+      let set = 0;
+      for (const b of buildings) {
+        if (BUILDINGS[b.type]?.produces) { w.issueCommand('player', { type: 'rally', id: b.id, x: wx, y: wy }); set++; }
+      }
+      if (set) {
+        this.game.markers.push({ x: wx, y: wy, type: 'move', ttl: 30, max: 30 });
+        return;
+      }
     }
     if (!units.length) return;
     const ids = units.map(u => u.id);

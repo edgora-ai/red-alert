@@ -62,6 +62,7 @@ export class Minimap {
 
   update(renderer) {
     this.frame++;
+    if (this.frame % 150 === 0) this.prerender(); // 每 5s 重绘地形：矿区枯竭后不再残留金色矿点
     if (this.frame % 10 !== 0) return; // 节流：每 1/3s
     const { ctx, world: w, scale: s } = this;
     ctx.drawImage(this.terrain, 0, 0);
