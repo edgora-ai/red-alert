@@ -17,7 +17,7 @@ export function updateCombat(world, e) {
   if (e.burst) {
     const t = world.entities.get(e.burst.targetId);
     if (!t || t.dead) { e.burst = null; }
-    else if ((e.burst.cd--) <= 0) {
+    else if (--e.burst.cd <= 0) {
       e.burst.cd = w.burstCd;
       e.dir = Math.atan2(t.y - e.y, t.x - e.x);
       fireOne(world, e, w, t, (Math.random() - 0.5) * 0.3);

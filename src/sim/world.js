@@ -230,7 +230,7 @@ export class World {
     if (UPGRADES[item] && this.upgrades[side].owned.has(item)) return { ok: false, reason: '已研发' };
     if (def.side && def.side !== side) return { ok: false, reason: '阵营限定' };
     const producerType = UNITS[item] ? UNITS[item].producer : (UPGRADES[item]?.producer || 'yard');
-    const producer = this.buildingsOf(side).find(b => b.type === producerType && (b.def?.produces ?? BUILDINGS[b.type].produces)?.includes(item));
+    const producer = this.buildingsOf(side).find(b => b.type === producerType && BUILDINGS[b.type].produces?.includes(item));
     if (!producer) return { ok: false, reason: '缺少生产建筑' };
     if (!this.hasPrereq(side, def)) return { ok: false, reason: '前置科技未解锁' };
     if (this.credits[side] < def.cost) return { ok: false, reason: '资金不足' };
@@ -846,6 +846,7 @@ export class World {
     updatePower(this);
 
     for (const e of [...this.entities.values()]) {
+      if (e.dead) continue; // 同 tick 内被击杀的实体立即停摆：死者不再移动/开火/生产
       if (e.flash > 0) e.flash--;
       if (e.recoil > 0) e.recoil--; // 炮管后坐恢复（渲染用）
       if (e.kind === 'unit') {

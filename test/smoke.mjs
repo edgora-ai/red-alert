@@ -495,5 +495,41 @@ check('天启坦克双联导弹可对空', drone.hp < drone.maxHp, `ghost hp ${M
   world.killEntity(gh); world.killEntity(gtgt);
 }
 
+// —— 阶段16：v8 第三轮审查修复回归（同 tick 死者停摆） ——
+{
+  // 独立世界做确定性先手对决：插入顺序保证玩家坦克先结算并击杀敌坦克，
+  // 死者在本 tick 轮到时绝不能再开火（修复前快照迭代会让死者反打一发）
+  const w4 = createSkirmish(888);
+  const dsp = (() => {
+    for (let r = 0; r < 24; r++) {
+      for (let ty = 56 - r; ty <= 56 + r; ty++) {
+        for (let tx = 28 - r; tx <= 28 + r; tx++) {
+          let ok = true;
+          for (let dy = -1; dy <= 3 && ok; dy++)
+            for (let dx = -1; dx <= 3 && ok; dx++)
+              if (!w4.inBounds(tx + dx, ty + dy) || w4.bgrid[w4.idx(tx + dx, ty + dy)] !== -1) ok = false;
+          if (!ok) continue;
+          for (let dy = 0; dy < 2; dy++)
+            for (let dx = 0; dx < 2; dx++) w4.tiles[w4.idx(tx + dx, ty + dy)] = TT.GRASS;
+          return { tx, ty };
+        }
+      }
+    }
+    return null;
+  })();
+  const shooter = w4.addUnit('player', 'aurora', dsp.tx + 0.5, dsp.ty + 0.5);
+  const victimE = w4.addUnit('enemy', 'tyrant', dsp.tx + 3.5, dsp.ty + 0.5);
+  shooter.order = { type: 'attack', targetId: victimE.id };
+  shooter.targetId = victimE.id;
+  victimE.order = { type: 'attack', targetId: shooter.id };
+  victimE.targetId = shooter.id;
+  victimE.cooldown = 1; // 再晚 1 tick 就开火：若死者不停摆，本 tick 轮到它时恰好会打出炮弹
+  victimE.hp = 40; // 极光粒子光束 95×重甲1.0 即时命中必杀
+  w4.tick();
+  for (let i = 0; i < 12; i++) w4.tick(); // 若有死者炮弹，此刻早已命中
+  check('同 tick 被击杀的实体立即停摆（死者不再开火）', victimE.dead && shooter.hp === shooter.maxHp,
+    `shooterHp ${shooter.hp}/${shooter.maxHp} victimDead=${!!victimE.dead}`);
+}
+
 console.log(`\n${failures === 0 ? '全部通过 ✔' : failures + ' 项失败 ✘'}`);
 process.exit(failures === 0 ? 0 : 1);
