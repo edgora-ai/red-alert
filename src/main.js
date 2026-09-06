@@ -92,6 +92,9 @@ function startGame() {
   window.__dbg = { world, game, camera, renderer, input, sound, ui, ai };
   if (ui) ui.el.diffBadge.textContent = `AI · ${ai.diff.name} · ${mode.name}`;
   startEl.classList.add('hidden');
+  // 关键：释放开始/选单按钮焦点——否则游戏中按空格（跳警报）会再次触发按钮点击重开整局
+  document.activeElement?.blur?.();
+  startBtn.blur?.();
   game.started = true;
   game.paused = false;
   // 开局引导（只播一次）：电厂→兵营→采矿三步走
