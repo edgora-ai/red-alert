@@ -44,6 +44,11 @@ export class Input {
     window.addEventListener('mouseup', this._onUp = e => this.onUp(e));
     canvas.addEventListener('mouseleave', this._onMl = () => { this.mouse.inside = false; if (!this.dragStart) this.game.mouseTile = null; });
     canvas.addEventListener('wheel', this._onWh = e => this.onWheel(e), { passive: false });
+    // —— 触控最小可用链路：点选=左键 / 拖拽=框选 / 长按=右键命令 / 双指=缩放+拖屏 ——
+    canvas.addEventListener('touchstart', this._onTs = e => this.onTouchStart(e), { passive: false });
+    canvas.addEventListener('touchmove', this._onTm = e => this.onTouchMove(e), { passive: false });
+    canvas.addEventListener('touchend', this._onTe = e => this.onTouchEnd(e), { passive: false });
+    canvas.addEventListener('touchcancel', this._onTc = e => this.onTouchEnd(e), { passive: false });
     window.addEventListener('keydown', this._onKeyDn = e => this.onKey(e, true));
     window.addEventListener('keyup', this._onKeyUp = e => this.onKey(e, false));
   }
@@ -54,6 +59,11 @@ export class Input {
     this.cv.removeEventListener('mousedown', this._onMd);
     this.cv.removeEventListener('mouseleave', this._onMl);
     this.cv.removeEventListener('wheel', this._onWh);
+    this.cv.removeEventListener('touchstart', this._onTs);
+    this.cv.removeEventListener('touchmove', this._onTm);
+    this.cv.removeEventListener('touchend', this._onTe);
+    this.cv.removeEventListener('touchcancel', this._onTc);
+    if (this.longTimer) { clearTimeout(this.longTimer); this.longTimer = null; }
     window.removeEventListener('mousemove', this._onPanMove);
     window.removeEventListener('mouseup', this._onPanUp);
     window.removeEventListener('mousemove', this._onMove);
@@ -329,6 +339,128 @@ export class Input {
     }
     const v = this._viewBox;
     return u.x >= v.x0 && u.x <= v.x1 && u.y >= v.y0 && u.y <= v.y1;
+  }
+
+  // ---------- 触控：点选=左键 / 拖拽=框选 / 长按=右键命令 / 双指=缩放+拖屏 ----------
+  _touchPos(t) {
+    const rect = this.cv.getBoundingClientRect();
+    return { x: t.clientX, y: t.clientY, rect };
+  }
+
+  onTouchStart(e) {
+    e.preventDefault();
+    this.sound.unlock();
+    this.game.userPlay = true;
+    const ts = e.touches;
+    if (ts.length >= 2) {
+      // 双指：进入缩放+拖屏模式，取消点选/长按状态
+      if (this.longTimer) { clearTimeout(this.longTimer); this.longTimer = null; }
+      this.dragStart = null;
+      this.game.selectBox = null;
+      if (this.selboxEl) this.selboxEl.style.display = 'none';
+      const a = this._touchPos(ts[0]), b = this._touchPos(ts[1]);
+      this.pinch = {
+        d0: Math.hypot(a.x - b.x, a.y - b.y),
+        dist0: this.cam.dist,
+        mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2,
+        cx: this.cam.x, cy: this.cam.y,
+        rect: a.rect,
+      };
+      this.touchTap = null;
+      return;
+    }
+    if (this.pinch) return; // 双指中忽略新手指
+    const p = this._touchPos(ts[0]);
+    this.touchTap = { x: p.x, y: p.y, t: performance.now(), moved: false, longFired: false };
+    // 长按 500ms 不动 = 右键命令（移动/攻击/放置确认）
+    this.longTimer = setTimeout(() => {
+      this.longTimer = null;
+      const tap = this.touchTap;
+      if (!tap || tap.moved) return;
+      const t = this.s2t(p.x - p.rect.left, p.y - p.rect.top);
+      tap.longFired = true;
+      this.dragStart = null;
+      this.game.selectBox = null;
+      if (this.selboxEl) this.selboxEl.style.display = 'none';
+      // 复用左键模式进入逻辑：超武落点 / 建筑放置直接落子，否则走右键命令
+      const w = this.world;
+      if (this.superTarget) {
+        const ok = w.issueCommand('player', { type: 'superstrike', x: t.x, y: t.y });
+        if (ok) this.game.markers.push({ x: t.x, y: t.y, type: 'attack', ttl: 30, max: 30 });
+        this._clearSuperTarget();
+        this.updateCursorState();
+        return;
+      }
+      if (w.sides.player.placing) {
+        w.issueCommand('player', { type: 'build', tx: t.x, ty: t.y });
+        return;
+      }
+      this.rightCommand(t.x, t.y, false);
+      this.game.markers.push({ x: t.x, y: t.y, type: 'move', ttl: 30, max: 30 });
+    }, 500);
+    // 点选起点：先走左键按下（框选逻辑挂 dragStart；纯点选在抬起时落子）
+    this.onDown({ button: 0, clientX: p.x, clientY: p.y, shiftKey: false });
+  }
+
+  onTouchMove(e) {
+    e.preventDefault();
+    const ts = e.touches;
+    if (this.pinch && ts.length >= 2) {
+      // 双指缩放（以中点为锚）+ 中点位移拖屏
+      const a = this._touchPos(ts[0]), b = this._touchPos(ts[1]);
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      if (this.pinch.d0 > 0) {
+        const newDist = Math.min(70, Math.max(10, this.pinch.dist0 * (d / this.pinch.d0)));
+        const before = this.s2t(mx - this.pinch.rect.left, my - this.pinch.rect.top);
+        const k = 1 - newDist / this.pinch.dist0;
+        this.cam.x = Math.min(this.world.w, Math.max(0, this.cam.x + (before.x - this.cam.x) * k));
+        this.cam.y = Math.min(this.world.h, Math.max(0, this.cam.y + (before.y - this.cam.y) * k));
+        this.cam.dist = newDist;
+      }
+      // 中点位移 → 拖屏（相对 pinch 起点）
+      const dxPx = mx - this.pinch.mx, dyPx = my - this.pinch.my;
+      if (Math.abs(dxPx) + Math.abs(dyPx) > 2 && this.renderer) {
+        const scale = this.cam.dist * 1.1 / Math.max(1, this.renderer.vw);
+        const fx = -Math.sin(this.cam.yaw), fy = -Math.cos(this.cam.yaw);
+        const rx = -fy, ry = fx;
+        this.cam.x = Math.min(this.world.w, Math.max(0, this.pinch.cx - (rx * dxPx + fx * dyPx) * scale));
+        this.cam.y = Math.min(this.world.h, Math.max(0, this.pinch.cy - (ry * dxPx + fy * dyPx) * scale));
+        this.game.userCam = true;
+      }
+      return;
+    }
+    if (ts.length !== 1 || !this.touchTap) return;
+    const p = this._touchPos(ts[0]);
+    const tap = this.touchTap;
+    if (Math.abs(p.x - tap.x) + Math.abs(p.y - tap.y) > 10) {
+      tap.moved = true;
+      if (this.longTimer) { clearTimeout(this.longTimer); this.longTimer = null; }
+      // 拖拽=框选：复用鼠标移动路径
+      this.onMove({ clientX: p.x, clientY: p.y });
+    }
+  }
+
+  onTouchEnd(e) {
+    e.preventDefault();
+    if (this.longTimer) { clearTimeout(this.longTimer); this.longTimer = null; }
+    if (this.pinch) {
+      // 双指结束：整体重置（残留手指需抬起重触，避免半截手势误触发点选）
+      this.pinch = null;
+      this.touchTap = null;
+      this.dragStart = null;
+      this.game.selectBox = null;
+      if (this.selboxEl) this.selboxEl.style.display = 'none';
+      return;
+    }
+    const tap = this.touchTap;
+    this.touchTap = null;
+    if (!tap) return;
+    if (tap.longFired) return; // 长按已下命令，不再落点选
+    const t = e.changedTouches[0];
+    const x = t ? t.clientX : tap.x, y = t ? t.clientY : tap.y;
+    // 抬起=左键单击落子（点选 / 放置确认 / 模式落点）
+    this.onUp({ button: 0, clientX: x, clientY: y, shiftKey: false });
   }
 
   onWheel(e) {

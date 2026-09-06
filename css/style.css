@@ -139,7 +139,7 @@ html, body {
 /* ============ 主区 ============ */
 #main { display: flex; height: calc(100% - 44px); }
 #canvasWrap { flex: 1; position: relative; min-width: 0; }
-#game { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
+#game { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
 #game.cursor-attack { cursor: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28'><circle cx='14' cy='14' r='9' fill='none' stroke='%23ff5545' stroke-width='2.5'/><path d='M14 1v7M14 20v7M1 14h7M20 14h7' stroke='%23ff5545' stroke-width='2.5'/></svg>") 14 14, crosshair; }
 #game.cursor-super { cursor: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><circle cx='16' cy='16' r='10' fill='none' stroke='%239fe8ff' stroke-width='2'/><circle cx='16' cy='16' r='2.5' fill='%239fe8ff'/><path d='M16 0v8M16 24v8M0 16h8M24 16h8' stroke='%239fe8ff' stroke-width='2'/></svg>") 16 16, crosshair; }
 #selbox {
@@ -306,6 +306,18 @@ html, body {
 }
 #restartBtn:hover { filter: brightness(1.15); }
 #errlog { display: none; white-space: pre-wrap; }
+
+/* ============ 窄屏适配（移动横屏/小窗）：侧栏收窄，小地图缩小，顶栏压缩 ============ */
+@media (max-width: 900px) {
+  #sidebar { width: 168px; padding: 6px; gap: 6px; }
+  #buildgrid { grid-template-columns: 1fr 1fr; gap: 4px; }
+  .bbtn img { width: 44px; height: 33px; }
+  .bbtn .bname { font-size: 10px; }
+  #minimap { width: 132px !important; height: 132px !important; }
+  #topbar { gap: 8px; padding: 0 8px; font-size: 12px; }
+  #msg { font-size: 11px; }
+  #overlayText { font-size: 36px; letter-spacing: 8px; text-indent: 8px; }
+}
 
 /* ============ F1 帮助面板 ============ */
 #helpPanel {

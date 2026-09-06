@@ -1300,5 +1300,20 @@ check('阵营门：玩家无法生产空天航母、AI 无法生产浮空炮艇'
   check('真机WebGL提示文案区分环境/异常', mainJs.includes('/webgl/i') && mainJs.includes('无 GPU 加速'));
 }
 
+// —— 阶段40：触控最小可用链路（点选/框选/长按命令/双指缩放） ——
+{
+  const { readFileSync } = await import('node:fs');
+  const inputJs40 = readFileSync('src/render/input.js', 'utf8');
+  const css40 = readFileSync('css/style.css', 'utf8');
+  check('触控事件接线（start/move/end/cancel）',
+    inputJs40.includes("addEventListener('touchstart'") && inputJs40.includes("addEventListener('touchmove'")
+    && inputJs40.includes("addEventListener('touchend'") && inputJs40.includes("addEventListener('touchcancel'"));
+  check('触控长按=右键命令（500ms）', inputJs40.includes('500') && inputJs40.includes('this.rightCommand(t.x, t.y, false)'));
+  check('触控双指缩放+拖屏', inputJs40.includes('this.pinch') && inputJs40.includes('pinch.dist0'));
+  check('触控监听可销毁（防重开泄漏）', inputJs40.includes("removeEventListener('touchstart'"));
+  check('触控画布禁浏览器手势冲突', css40.includes('#game') && css40.includes('touch-action: none'));
+  check('窄屏适配（侧栏收窄/小地图缩小）', css40.includes('@media (max-width: 900px)') && css40.includes('#minimap'));
+}
+
 console.log(`\n${failures === 0 ? '全部通过 ✔' : failures + ' 项失败 ✘'}`);
 process.exit(failures === 0 ? 0 : 1);
