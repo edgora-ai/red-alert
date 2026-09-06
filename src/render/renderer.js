@@ -2,7 +2,7 @@
 // 地表/迷雾为 Canvas 贴图（与 sim 瓦片同步），水面/天空为程序着色器，实体为真实 3D 网格
 
 import * as THREE from '../../vendor/three.module.min.js';
-import { T, UNITS, BUILDINGS } from '../config.js';
+import { T, UNITS, BUILDINGS, WEAPONS, ECON } from '../config.js';
 import { buildUnitModel, buildBuildingModel, makeTree, makeTree2, makeRock, makeOre, makeCrate, makeBarrel, makeSandbags, makeWreck, SIDE_COLORS } from './models.js';
 import { PostFX } from './postfx.js';
 import { Particles } from './particles.js';
@@ -877,24 +877,85 @@ export class Renderer {
           const beam = f.type === 'beam';
           const col = new THREE.Color(f.color);
           const g = new THREE.Group();
-          const core = new THREE.Mesh(
-            new THREE.CylinderGeometry(beam ? 0.045 : 0.02, beam ? 0.045 : 0.02, 1, 6, 1, true),
-            new THREE.MeshBasicMaterial({ color: f.color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }),
-          );
-          core.userData.baseO = 1;
-          g.add(core);
-          if (beam) {
-            const glow = new THREE.Mesh(
-              new THREE.CylinderGeometry(0.13, 0.13, 1, 6, 1, true),
-              new THREE.MeshBasicMaterial({ color: f.color, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false }),
+          // 命中/电弧辉光纹理（惰性共享）
+          this.hitGlowTex ??= (() => {
+            const c = document.createElement('canvas');
+            c.width = c.height = 64;
+            const x = c.getContext('2d');
+            const gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+            gr.addColorStop(0, 'rgba(255,255,255,1)');
+            gr.addColorStop(0.4, 'rgba(255,255,255,0.55)');
+            gr.addColorStop(1, 'rgba(255,255,255,0)');
+            x.fillStyle = gr;
+            x.fillRect(0, 0, 64, 64);
+            return new THREE.CanvasTexture(c);
+          })();
+          if (f.jag) {
+            // 锯齿闪电弧：折线分段 + 随机垂直抖动（磁暴电弧专属质感）
+            const N = 7;
+            const pts = [];
+            const y1 = f.alt1 ?? 0.42, y2 = beam ? 0.5 : 0.35;
+            for (let i = 0; i <= N; i++) {
+              const k = i / N;
+              const sway = Math.sin(k * Math.PI);
+              pts.push(new THREE.Vector3(
+                f.x1 + (f.x2 - f.x1) * k + (Math.random() - 0.5) * 0.55 * sway,
+                y1 + (y2 - y1) * k + (Math.random() - 0.5) * 0.3 * sway,
+                f.y1 + (f.y2 - f.y1) * k + (Math.random() - 0.5) * 0.55 * sway,
+              ));
+            }
+            const line = new THREE.Line(
+              new THREE.BufferGeometry().setFromPoints(pts),
+              new THREE.LineBasicMaterial({ color: f.color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }),
             );
-            glow.userData.baseO = 0.3;
-            g.add(glow);
+            line.userData.baseO = 1;
+            g.add(line);
+            const glowLine = new THREE.Line(
+              new THREE.BufferGeometry().setFromPoints(pts.map(p => p.clone())),
+              new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false }),
+            );
+            glowLine.userData.baseO = 0.7;
+            g.add(glowLine);
+            f._noStretch = true;
+            // 电弧中段辉光节点：增强 1px 线的可见厚度
+            for (const k of [0.3, 0.55, 0.8]) {
+              const mp = pts[Math.round(k * N)];
+              const spark = new THREE.Sprite(new THREE.SpriteMaterial({
+                map: this.hitGlowTex, color: new THREE.Color(f.color),
+                transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false,
+              }));
+              spark.position.copy(mp);
+              spark.scale.setScalar(0.4);
+              spark.userData.baseO = 0.55;
+              g.add(spark);
+            }
+          } else {
+            const core = new THREE.Mesh(
+              new THREE.CylinderGeometry(beam ? 0.045 : 0.02, beam ? 0.045 : 0.02, 1, 6, 1, true),
+              new THREE.MeshBasicMaterial({ color: f.color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }),
+            );
+            core.userData.baseO = 1;
+            g.add(core);
+            if (beam) {
+              const glow = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.13, 0.13, 1, 6, 1, true),
+                new THREE.MeshBasicMaterial({ color: f.color, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false }),
+              );
+              glow.userData.baseO = 0.3;
+              g.add(glow);
+            }
           }
+          const p1 = new THREE.Vector3(f.x1, f.alt1 ?? 0.42, f.y1), p2 = new THREE.Vector3(f.x2, beam ? 0.5 : 0.35, f.y2);
+          if (!f._noStretch) for (const child of g.children) this.stretchBetween(child, p1, p2);
+          const hitGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+            map: this.hitGlowTex, color: col, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+          }));
+          hitGlow.position.copy(p2);
+          hitGlow.scale.setScalar(beam ? 0.85 : 0.5);
+          hitGlow.userData.baseO = 0.95;
+          g.add(hitGlow);
           f._mesh = g;
           this.scene.add(g);
-          const p1 = new THREE.Vector3(f.x1, f.alt1 ?? 0.42, f.y1), p2 = new THREE.Vector3(f.x2, beam ? 0.5 : 0.35, f.y2);
-          for (const child of g.children) this.stretchBetween(child, p1, p2);
           this.particles.impact(f.x2, f.y2, col.getHex());
         }
         for (const child of f._mesh.children) child.material.opacity = child.userData.baseO * a;
@@ -906,7 +967,10 @@ export class Renderer {
       if (f.ttl <= 0) {
         if (f._mesh) {
           this.scene.remove(f._mesh);
-          for (const child of f._mesh.children) { child.geometry.dispose(); child.material.dispose(); }
+          for (const child of f._mesh.children) {
+            child.material.dispose();
+            if (!child.isSprite) child.geometry.dispose(); // Sprite 共享内置几何体，dispose 会毁掉全局血条
+          }
           f._mesh = null;
         }
         w.fx.splice(i, 1);
@@ -987,6 +1051,8 @@ export class Renderer {
 
     // Shift 队列航线：选中单位当前指令 + 排队点连线（职业玩家刚需）
     this.syncQueueLines(game, w);
+    // 选中防御塔/修理厂：显示射程/工作半径圈（战术决策刚需）
+    this.syncRangeRings(game, w);
 
     // 放置幽灵（呼吸闪烁）
     const item = w.sides.player.placing;
@@ -1087,6 +1153,43 @@ export class Renderer {
         m.renderOrder = 6;
         g.add(m);
       }
+    }
+  }
+
+  // ---------- 选中防御建筑的范围圈（10 帧重建一次） ----------
+  syncRangeRings(game, w) {
+    if (!this.rrGroup) {
+      this.rrGroup = new THREE.Group();
+      this.rrGroup.frustumCulled = false;
+      this.scene.add(this.rrGroup);
+      this._rrTick = 0;
+    }
+    if (++this._rrTick % 10 !== 0) return;
+    const g = this.rrGroup;
+    for (let i = g.children.length - 1; i >= 0; i--) {
+      const c = g.children[i];
+      g.remove(c);
+      c.geometry.dispose();
+      c.material.dispose();
+    }
+    for (const id of game.selection) {
+      const b = w.entities.get(id);
+      if (!b || b.kind !== 'building' || b.side !== 'player' || b.dead) continue;
+      let radius = 0, color = 0x7ee787;
+      if (b.weapon && WEAPONS[b.weapon]) { radius = WEAPONS[b.weapon].range; }
+      else if (BUILDINGS[b.type]?.repair) { radius = ECON.repair.radius; color = 0x57d7e8; }
+      else continue;
+      const pts = [];
+      for (let i = 0; i <= 64; i++) {
+        const a = (i / 64) * Math.PI * 2;
+        pts.push(new THREE.Vector3(b.x + Math.cos(a) * radius, 0.07, b.y + Math.sin(a) * radius));
+      }
+      const ring = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(pts),
+        new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.38, depthWrite: false }),
+      );
+      ring.renderOrder = 6;
+      g.add(ring);
     }
   }
 

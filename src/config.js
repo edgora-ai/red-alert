@@ -35,7 +35,7 @@ export const WEAPONS = {
   sniperW:   { name: '反器材狙击枪', dmg: 70,  dtype: 'bullet',  range: 8.5, cooldown: 55,  projSpeed: 0,    canAir: false, splash: 0 },
   titanW:    { name: '双联电磁轨道炮', dmg: 115, dtype: 'shell',   range: 8.5, cooldown: 85,  projSpeed: 1.1,  canAir: false, splash: 0.5, burst: 2, burstCd: 9 },
   // —— 超级进化：阵营专属武器（chain=链式跳跃目标数，chainFall=衰减系数，stun=瘫痪 tick）——
-  teslaW:    { name: '磁暴电弧',     dmg: 85,  dtype: 'energy',  range: 6.5, cooldown: 75,  projSpeed: 0,    canAir: false, splash: 0, chain: 2, chainFall: 0.6, stun: 45, color: '#8fd4ff' },
+  teslaW:    { name: '磁暴电弧',     dmg: 85,  dtype: 'energy',  range: 6.5, cooldown: 75,  projSpeed: 0,    canAir: false, splash: 0, chain: 2, chainFall: 0.6, stun: 45, color: '#8fd4ff', jag: true },
   prismW:    { name: '光棱折射束',   dmg: 62,  dtype: 'energy',  range: 7.5, cooldown: 55,  projSpeed: 0,    canAir: false, splash: 0, chain: 2, chainFall: 0.75, color: '#bfff9f' },
   mirageW:   { name: '光束狙击炮',   dmg: 85,  dtype: 'energy',  range: 6.5, cooldown: 55,  projSpeed: 0,    canAir: false, splash: 0, color: '#c9f2ff' },
   kirovW:    { name: '重型航空炸弹', dmg: 80,  dtype: 'shell',   range: 4.5, cooldown: 45,  projSpeed: 0.45, canAir: false, splash: 1.1 },

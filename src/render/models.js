@@ -275,9 +275,14 @@ function harvester(side) {
   g.add(box(0.95, 0.12, 0.5, h, 0, 0.18, 0));
   g.add(box(0.2, 0.22, 0.46, h, 0.38, 0.32, 0));                 // 驾驶室
   g.add(box(0.14, 0.08, 0.4, 0x10141a, 0.44, 0.36, 0));          // 风挡
+  g.add(box(0.2, 0.05, 0.478, 0xffffff, 0.38, 0.235, 0, { map: tex(skin('haz'), 0.7, 0.4) })); // 驾驶室警示条
   g.add(box(0.55, 0.2, 0.48, 0x4a4436, -0.14, 0.34, 0));         // 货斗
   const ore = box(0.48, 0.08, 0.4, 0xd4af37, -0.14, 0.44, 0, { em: 0xd4af37, emi: 0.3 });
   ore.visible = false;                                            // 有矿才显示
+  // 满载矿石晶簇（随货斗矿石一起显隐）
+  ore.add(oct(0.09, 0xe8c458, 0.12, 0.09, 0.08, { em: 0xe8c458, emi: 0.5 }));
+  ore.add(oct(0.07, 0xd4af37, -0.1, 0.08, -0.09, { em: 0xd4af37, emi: 0.5 }));
+  ore.add(oct(0.06, 0xffe08a, 0, 0.1, -0.02, { em: 0xffe08a, emi: 0.6 }));
   g.add(ore);
   g.add(wheels(6, 0.11, 0.08, [-0.32, 0, 0.32], 0.27));
   g.userData.oreFill = ore;
@@ -308,6 +313,17 @@ function kirov(side) {
   const env = sph(0.62, 0x6a7078, 0, 0, 0, { seg: 14 }); // 灰色巨型气囊
   env.scale.set(2.0, 0.78, 0.82);
   g.add(env);
+  // 气囊环向肋条（结构缝质感）+ 鼻锥
+  for (const [rx, rr] of [[-0.4, 0.4], [0.12, 0.48], [0.6, 0.42]]) {
+    const rib = new THREE.Mesh(new THREE.TorusGeometry(rr, 0.014, 6, 22), mat(0x565c64, { metal: 0.4, rough: 0.5 }));
+    rib.rotation.y = Math.PI / 2;
+    rib.position.set(rx, 0, 0);
+    rib.scale.set(1, 0.8, 0.86);
+    g.add(rib);
+  }
+  const nose = cone(0.16, 0.28, 0x6a7078, 1.34, 0, 0);
+  nose.rotation.z = -Math.PI / 2;
+  g.add(nose);
   const stripe = box(1.6, 0.06, 0.02, a, 0, 0.1, 0.51, { em: a, emi: 0.4 }); // 阵营识别条纹
   stripe.rotation.z = 0.05;
   g.add(stripe);
@@ -316,7 +332,7 @@ function kirov(side) {
   for (const s of [-1, 1]) g.add(box(0.34, 0.03, 0.26, 0x555b63, -1.08, 0.14, s * 0.14));
   // 武装吊舱（阵营涂装）+ 舷窗
   g.add(box(0.56, 0.16, 0.2, h, 0.08, -0.52, 0));
-  g.add(box(0.22, 0.05, 0.14, 0x1a1e24, 0.3, -0.54, 0));
+  for (let i = 0; i < 4; i++) g.add(box(0.05, 0.04, 0.012, 0xffe9a8, -0.08 + i * 0.11, -0.5, 0.104, { em: 0xffe9a8, emi: 1.2 })); // 发光舷窗
   // 双引擎短舱 + 旋转螺旋桨模糊盘
   const rotors = [];
   for (const s of [-1, 1]) {
@@ -520,6 +536,9 @@ function infantry(type, side) {
   }
   g.userData.legs = legs;
   g.add(cyl(0.06, 0.075, 0.14, type === 'sniper' ? 0x2e3a2e : h, 0, 0.19, 0)); // 作战服（狙击手吉利布色）
+  g.add(box(0.05, 0.1, 0.07, 0x2c343e, -0.065, 0.2, 0));   // 背包（背在 -x 后侧）
+  g.add(box(0.09, 0.05, 0.11, 0x39424c, 0, 0.243, 0));     // 战术背心
+  for (const s of [-1, 1]) g.add(box(0.055, 0.025, 0.04, 0x39424c, 0, 0.262, s * 0.06)); // 护肩
   g.add(sph(0.055, type === 'engineer' ? 0xffd866 : type === 'sniper' ? 0x2e3a2e : h, 0, 0.3, 0)); // 头盔
   const yaw = new THREE.Group(); yaw.position.y = 0.21;
   if (type === 'rocket') yaw.add(cyl(0.03, 0.03, 0.26, 0x555f6a, 0.06, 0.06, 0, { rz: -Math.PI / 2.4 })); // 肩扛火箭筒
@@ -566,6 +585,16 @@ const BUILDING_BUILDERS = {
       g.add(cyl(0.13, 0.16, 0.85, 0x8a4a3a, x, 0.5, -0.5));       // 红砖烟囱
       g.add(cyl(0.14, 0.14, 0.05, 0x1a1e24, x, 0.94, -0.5));
     }
+    // 屋顶通风机（持续旋转）
+    const vent = new THREE.Group(); vent.position.set(0.35, 0.52, 0.45);
+    vent.add(cyl(0.1, 0.12, 0.09, 0x3c444e, 0, 0, 0));
+    for (let i = 0; i < 3; i++) {
+      const blade = box(0.15, 0.015, 0.05, 0x8a939c, 0, 0.05, 0);
+      blade.rotation.y = (i / 3) * Math.PI * 2;
+      vent.add(blade);
+    }
+    g.add(vent);
+    g.userData.spin = { obj: vent, speed: 2.4 };
     g.userData.smokeStacks = [{ x: -0.3, y: 0.98, z: -0.5 }, { x: 0.3, y: 0.98, z: -0.5 }];
     return g;
   },
@@ -580,7 +609,14 @@ const BUILDING_BUILDERS = {
   },
   refinery(side) {
     const g = slab(3, 2, side), h = HULL[side];
-    for (const x of [-0.8, 0, 0.8]) g.add(cyl(0.18, 0.18, 0.75, 0x9aa2ab, x, 0.45, -0.45)); // 储料罐
+    for (const x of [-0.8, 0, 0.8]) {
+      g.add(cyl(0.18, 0.18, 0.75, 0x9aa2ab, x, 0.45, -0.45));     // 储料罐
+      g.add(cyl(0.19, 0.19, 0.055, 0xd8a013, x, 0.7, -0.45));     // 罐体警示环
+      g.add(cyl(0.19, 0.19, 0.04, 0x3c444e, x, 0.16, -0.45));     // 罐底基座环
+    }
+    const beacon = sph(0.035, 0xff6a5c, 0, 0.86, -0.45, { em: 0xff6a5c, emi: 2 }); // 航空障碍灯
+    g.add(beacon);
+    g.userData.bob = { obj: beacon, y: 0.86 };
     const hopper = cone(0.35, 0.5, 0xc8a03c, -0.6, 0.5, 0.45);    // 卸矿斗
     hopper.rotation.x = Math.PI; g.add(hopper);
     g.add(box(1.6, 0.24, 0.6, 0xffffff, 0.2, 0.19, 0.45, { map: tex(skin('metal'), 2, 0.8) }));
@@ -674,6 +710,14 @@ const BUILDING_BUILDERS = {
   laser(side) {
     const g = slab(1, 1, side);
     g.add(cyl(0.3, 0.38, 0.28, 0xffffff, 0, 0.2, 0, { map: tex(skin('metal'), 1, 0.6) })); // 装甲基座
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2 + 0.5;
+      g.add(box(0.055, 0.32, 0.055, 0x3c444e, Math.cos(a) * 0.25, 0.19, Math.sin(a) * 0.25)); // 三向支柱
+    }
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.018, 6, 16), mat(0x3c444e, { metal: 0.5, rough: 0.4 }));
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = 0.37;
+    g.add(ring);                                                    // 聚焦环
     const crystal = oct(0.17, 0x7df9ff, 0, 0.55, 0, { em: 0x7df9ff, emi: 1.8 }); // 激光棱镜
     g.add(crystal);
     g.userData.bob = { obj: crystal, y: 0.55 };

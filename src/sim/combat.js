@@ -165,6 +165,7 @@ function fireOne(world, e, w, target, off = 0) {
       alt1: e.kind === 'building' ? 1.0 : undefined, // 磁暴线圈从塔顶出弧
       color: w.color ?? (energy ? (e.side === 'player' ? '#7df9ff' : '#ffb347') : '#ffe9a8'),
       ttl: energy ? 9 : 4, max: energy ? 9 : 4,
+      jag: w.jag, // 磁暴锯齿电弧
     });
     if (w.stun && target.kind === 'unit') target.stun = w.stun; // 磁暴麻痹
     applyDamage(world, target, dmg, w.dtype, e);
@@ -201,7 +202,8 @@ function chainArcs(world, e, w, first, dmg) {
     hit.add(best.id);
     world.fx.push({
       type: 'beam', x1: from.x, y1: from.y, x2: best.x, y2: best.y,
-      color: w.color ?? '#9fd8ff', ttl: 8, max: 8,
+      alt1: e.kind === 'building' && i === 0 ? 1.0 : undefined,
+      color: w.color ?? '#9fd8ff', ttl: 8, max: 8, jag: w.jag,
     });
     const d2 = dmg * Math.pow(w.chainFall ?? 0.6, i + 1);
     if (w.stun) best.stun = w.stun; // 链式磁暴同样带麻痹

@@ -381,6 +381,7 @@ export class Input {
           this.attackMove = false;
           this.superTarget = false;
           this.patrolMode = false;
+          document.getElementById('settings')?.classList.add('hidden'); // 顺手收起设置面板
           break;
         case ' ': { // 空格：跳到最近一次受击警报点
           const al = w.alerts.filter(a => a.side === 'player');
