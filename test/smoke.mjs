@@ -724,5 +724,38 @@ check('天启坦克双联导弹可对空', drone.hp < drone.maxHp, `ghost hp ${M
   wa.killEntity(ml); wa.killEntity(melee);
 }
 
+// —— 阶段26：v8 第十九轮审查回归（电力恢复提示 / 射程死区收紧） ——
+{
+  // 电力不足→恢复：摘掉全部电厂触发低电，归还后触发恢复提示
+  const { BUILDINGS: BUILDINGS_P } = await import('../src/config.js');
+  const { updatePower: up19 } = await import('../src/sim/economy.js');
+  const plants = [...world.entities.values()].filter(e => e.kind === 'building' && e.side === 'player' && (BUILDINGS_P[e.type]?.power || 0) > 0);
+  plants.forEach(p => world.entities.delete(p.id));
+  world.messages.length = 0;
+  up19(world);
+  const hadLow = world.messages.some(m => m.text.includes('电力不足'));
+  plants.forEach(p => world.entities.set(p.id, p)); // 归还电厂
+  world.messages.length = 0;
+  up19(world);
+  check('电力不足→恢复均有提示', hadLow && world.messages.some(m => m.text.includes('电力供应已恢复')),
+    `low=${hadLow} recover=${world.messages.some(m => m.text.includes('恢复'))}`);
+}
+{
+  // 射程死区收紧：固守单位在目标脱离射程后立刻丢弃重扫（不再卡 1.4 倍死区）
+  const wz = createSkirmish(1919);
+  const holderZ = wz.addUnit('player', 'cheetah', 40.5, 40.5);
+  holderZ.order = { type: 'hold', x: 40.5, y: 40.5 };
+  const runnerZ = wz.addUnit('enemy', 'rifle', 43.5, 40.5); // 先入射程
+  runnerZ.order = { type: 'idle' }; runnerZ.path = null;
+  for (let i = 0; i < 12; i++) wz.tick();
+  const engaged = holderZ.targetId === runnerZ.id;
+  runnerZ.x = 47.5; // 拉到 7 格（射程 5.5 外、1.05×5.5=5.8 外）
+  runnerZ.y = 40.5;
+  for (let i = 0; i < 14; i++) wz.tick(); // scanCd 10 内必重扫
+  check('目标脱离射程后固守单位立即转火（死区收紧）', engaged && holderZ.targetId !== runnerZ.id,
+    `engaged=${engaged} target=${holderZ.targetId === runnerZ.id ? 'stale' : holderZ.targetId}`);
+  wz.killEntity(holderZ); wz.killEntity(runnerZ);
+}
+
 console.log(`\n${failures === 0 ? '全部通过 ✔' : failures + ' 项失败 ✘'}`);
 process.exit(failures === 0 ? 0 : 1);

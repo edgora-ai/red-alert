@@ -108,9 +108,14 @@ export function updatePower(world) {
     }
     const was = world.power[side]?.low;
     world.power[side] = { supply, demand, low: demand > supply };
-    if (world.power[side].low && !was && side === 'player') {
-      world.messages.push({ side, text: '电力不足！防御塔停摆，生产减速', ttl: 150 });
-      world.events.push({ type: 'lowPower' }); // 闷警报（比通用错误音更有辨识度）
+    if (side === 'player') {
+      if (world.power[side].low && !was) {
+        world.messages.push({ side, text: '电力不足！防御塔停摆，生产减速', ttl: 150 });
+        world.events.push({ type: 'lowPower' }); // 闷警报（比通用错误音更有辨识度）
+      } else if (!world.power[side].low && was) {
+        world.messages.push({ side, text: '电力供应已恢复', ttl: 120 }); // 恢复提示：防御塔重新上线
+        world.events.push({ type: 'ready' });
+      }
     }
   }
 }

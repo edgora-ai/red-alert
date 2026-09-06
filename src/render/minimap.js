@@ -92,6 +92,9 @@ export class Minimap {
         ctx.strokeStyle = 'rgba(255,255,255,0.55)';
         ctx.lineWidth = 0.8;
         ctx.strokeRect(e.x * s - 2.2, e.y * s - 2.2, 4.4, 4.4);
+      } else if (e.type === 'harvester') {
+        // 矿车画方块：经济单位一眼与战斗单位（圆点）区分
+        ctx.fillRect(e.x * s - 1.5, e.y * s - 1.5, 3, 3);
       } else {
         ctx.beginPath();
         ctx.arc(e.x * s, e.y * s, 1.6, 0, 7);

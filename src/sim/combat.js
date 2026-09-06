@@ -28,10 +28,12 @@ export function updateCombat(world, e) {
 
   // 校验当前目标；目标死亡/脱离后若有排队指令则推进（attack 队列逐个点名）
   // 注意：attack/guard 是"点名追杀"指令——目标只是暂时超出射程时绝不丢弃（chase 分支负责接近），
-  // 否则右键点远处敌人会被 1.4 倍射程校验吞掉指令，部队原地罚站
+  // 否则右键点远处敌人会被射程校验吞掉指令，部队原地罚站。
+  // 非追击姿态（hold/idle/patrol/attackmove）用 1.05 倍紧口径：目标一出射程立刻丢弃重扫，
+  // 不在 1.4 倍的"打不着又不转火"死区里耗着
   let target = e.targetId != null ? world.entities.get(e.targetId) : null;
   const chaseOrder = e.order?.type === 'attack' || e.order?.type === 'guard';
-  if (target && (target.dead || !canEngage(world, e, w, target, chaseOrder ? Infinity : 1.4))) {
+  if (target && (target.dead || !canEngage(world, e, w, target, chaseOrder ? Infinity : 1.05))) {
     target = null; e.targetId = null;
     if (e.order?.type === 'attack' && e.kind === 'unit') {
       if (!world.popQueued(e)) { e.order = { type: 'idle' }; }
