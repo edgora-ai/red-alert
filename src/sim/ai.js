@@ -8,18 +8,19 @@ const BUILD_ORDER = [
 ];
 
 export class Commander {
-  constructor(world, side = 'enemy', diff = 'normal') {
+  constructor(world, side = 'enemy', diff = 'normal', opts = {}) {
     this.world = world;
     this.side = side;
     this.diff = DIFFS[diff] || DIFFS.normal;
     const mode = world.mode ?? {};
     this.waveMul = mode.aiWaveMul ?? 1;   // 玩法模式：波次节奏倍率
     this.trickleMul = mode.trickleMul ?? 1; // 玩法模式：运营补贴倍率
+    this.graceMul = opts.graceMul ?? world.graceMul ?? 1; // 开局保护：AI 首波延迟倍率（选单 0=职业节奏/1=默认/1.6=从容）
     this.timer = 0;
     this.bi = 0;          // 建造序列进度
     this.armyCounter = 0; // 兵种轮换计数
     this.waveNo = 0;
-    this.waveCd = (this.diff.waveCd0 ?? 500) * this.waveMul; // 首波缓冲（world tick）
+    this.waveCd = (this.diff.waveCd0 ?? 500) * this.waveMul * this.graceMul; // 首波缓冲（world tick）
     this.trickle = 0;
     this.defendCd = 0;
   }

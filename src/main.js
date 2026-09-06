@@ -51,17 +51,19 @@ function startGame() {
   const modeKey = document.querySelector('.mode-btn.active')?.dataset.mode || 'classic';
   const mode = GAME_MODES[modeKey] ?? GAME_MODES.classic;
   const fund = parseInt(document.querySelector('.fund-btn.active')?.dataset.fund || '5000', 10);
+  const graceMul = parseFloat(document.querySelector('.grace-btn.active')?.dataset.grace || '1');
   const seed = seedParam > 0 ? seedParam : (Date.now() % 900000) + 10000;
 
   world = createSkirmish(seed, mapKey);
   world.mode = mode;
+  world.graceMul = graceMul; // 开局保护：AI 首波延迟倍率（Commander 消费）
   world.credits.player = fund;
   world.credits.enemy = fund;
   game.world = world;
   game.diff = diffSel;
   game.selection.clear();
   game.markers.length = 0;
-  ai = new Commander(world, 'enemy', diffSel);
+  ai = new Commander(world, 'enemy', diffSel, { graceMul });
   if (mode.eliteStart) applyEliteStart(world);
   const yard = world.buildingsOf('player').find(b => b.type === 'yard') || world.buildingsOf('player')[0];
   camera.x = yard.x + 4; camera.y = yard.y + 3; camera.dist = 24; camera.yaw = 0.45;
@@ -128,9 +130,16 @@ window.__restartGame = () => {
 // 开始界面：选难度 → 开战（同时解锁 WebAudio）
 const startEl = document.getElementById('start');
 const startBtn = document.getElementById('startBtn');
-document.querySelectorAll('.diff-btn:not(.fund-btn)').forEach(btn => {
+document.querySelectorAll('.diff-btn:not(.fund-btn):not(.grace-btn)').forEach(btn => {
   btn.onclick = () => {
-    document.querySelectorAll('.diff-btn:not(.fund-btn)').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.diff-btn:not(.fund-btn):not(.grace-btn)').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  };
+});
+// 开局保护期选项（AI 首波延迟倍率）：组内互斥，不干扰难度/资源选择
+document.querySelectorAll('.grace-btn').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.grace-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
   };
 });

@@ -1079,11 +1079,22 @@ export class World {
           if (harvs.length === 0 || mining.length === 0) {
             if (this.tickCount - (this.mineAlertTick ?? -9999) > 1800) {
               this.mineAlertTick = this.tickCount;
-              this.messages.push({ side: 'player', text: harvs.length === 0 ? '⚠ 采矿线中断：矿车全部损失，生产矿车恢复经济（战车工厂）' : '⚠ 采矿线中断：60s 无矿石入账，检查矿车是否受阻（I 键定位矿车）', ttl: 220 });
+              // 轮44：一键补矿车指引具体到建筑+费用（新手不知道去哪补是真实流失点）
+              this.messages.push({ side: 'player', text: harvs.length === 0 ? '⚠ 采矿线中断：矿车全部损失！战车工厂 → 驮马采矿车（$900）补线' : '⚠ 采矿线中断：60s 无矿石入账，检查矿车是否受阻（I 键定位矿车）', ttl: 220 });
               this.events.push({ type: 'error' });
             }
           }
         }
+      }
+    }
+    // 轮44 战时配给：玩家矿车全灭且无采矿收入时，每 5s 发 $60 保底（对称 AI 被动 trickle，
+    // 长局采矿线断后不再干等死；有矿车干活时不触发，不养挂机）
+    if (this.tickCount % 150 === 0 && this.tickCount > 2000) {
+      const harvs44 = this.unitsOf('player').filter(u => u.type === 'harvester' && !u.dead);
+      const last44 = this.lastMineTick?.player ?? 0;
+      if (harvs44.length === 0 && this.tickCount - last44 > 1800 && !this.winner) {
+        this.credits.player += 60;
+        if (this.stats.player) this.stats.player.mined += 0; // 保底不计入采矿战报（口径纯洁）
       }
     }
     // 雷达预警：AI 波次出发且玩家有雷达站 → 侦测播报+波次出发位置警报点（小地图进攻方向）

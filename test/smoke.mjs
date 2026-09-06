@@ -212,6 +212,9 @@ const repB = world.buildingsOf('player').find(b => b.type === 'repair');
 const repTank = world.addUnit('player', 'cheetah', repB.x + 0.5, repB.y + 0.5);
 repTank.hp = repTank.maxHp * 0.3;
 const cRepair = world.credits.player;
+// 轮44：战时配给（矿车全灭时每5s+$60）会抬高资金水位→断言改为“维修生效且产生了维修扣费”
+// （用 spent 军费开支…不，维修扣费不进 spent；改用 hp 上升 + 资金增量 < 配给上限 反证扣费发生）
+world.lastMineTick = { player: world.tickCount, enemy: world.tickCount }; // 压住战时配给，隔离维修扣费断言
 for (let i = 0; i < 300; i++) world.tick();
 check('修理厂修复载具并扣费', repTank.hp > repTank.maxHp * 0.3 && world.credits.player < cRepair,
   `hp=${Math.round(repTank.hp)}/${Math.round(repTank.maxHp)} $${cRepair}->${Math.round(world.credits.player)}`);
@@ -1084,6 +1087,42 @@ check('阵营门：玩家无法生产空天航母、AI 无法生产浮空炮艇'
   w45.tick();
   check('轮43歼灭自动索敌（残敌方向接力推进）', mop45.order?.type === 'attackmove' && !!mop45.path,
     `order=${mop45.order?.type} path=${mop45.path ? mop45.path.length : mop45.path}`);
+}
+
+// —— 阶段32：轮44 运营矩阵回归（保护期选单 / 光棱费效 / 战时配给） ——
+{
+  // 32.1 开局保护期：graceMul 缩放 AI 首波缓冲（0=职业节奏/1=默认/1.6=从容）
+  const { Commander: C44 } = await import('../src/sim/ai.js');
+  const { DIFFS: D44 } = await import('../src/config.js');
+  const wA = createSkirmish(111), wB = createSkirmish(111), wC = createSkirmish(111);
+  const aiA = new C44(wA, 'enemy', 'normal', { graceMul: 0 });
+  const aiB = new C44(wB, 'enemy', 'normal', { graceMul: 1 });
+  const aiC = new C44(wC, 'enemy', 'normal', { graceMul: 1.6 });
+  check('轮44开局保护期（首波缓冲按倍率缩放）', aiA.waveCd === 0
+    && aiB.waveCd === D44.normal.waveCd0 && aiC.waveCd === Math.round(D44.normal.waveCd0 * 1.6),
+    `cd=${aiA.waveCd}/${aiB.waveCd}/${aiC.waveCd}`);
+}
+{
+  // 32.2 光棱费效比：$1200/420HP（修复前 $1800/360HP 无人问津）
+  const { UNITS: U44 } = await import('../src/config.js');
+  check('轮44光棱费效比（对标猎豹，链式为特色）', U44.prism.cost === 1200 && U44.prism.hp === 420,
+    `cost=${U44.prism.cost} hp=${U44.prism.hp}`);
+}
+{
+  // 32.3 战时配给：矿车全灭+无入账 → 每5s+$60；有矿车干活不触发
+  const wD = createSkirmish(222);
+  for (const u of wD.unitsOf('player').filter(u => u.type === 'harvester')) wD.killEntity(u);
+  wD.lastMineTick = { player: 0, enemy: 0 };
+  wD.tickCount = 20849; // 下一 tick=20850，命中 %150 窗口且 >2000、距上次入账超 1800
+  const cD = wD.credits.player;
+  wD.tick();
+  check('轮44战时配给（矿车全灭保底不断粮）', wD.credits.player === cD + 60, `$${cD}->${Math.round(wD.credits.player)}`);
+  const wE = createSkirmish(333);
+  wE.lastMineTick = { player: 0, enemy: 0 };
+  wE.tickCount = 20849;
+  const cE = wE.credits.player;
+  wE.tick();
+  check('轮44战时配给不养挂机（有矿车不触发）', wE.credits.player === cE, `$${cE}->${Math.round(wE.credits.player)}`);
 }
 
 console.log(`\n${failures === 0 ? '全部通过 ✔' : failures + ' 项失败 ✘'}`);

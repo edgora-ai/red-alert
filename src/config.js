@@ -64,7 +64,7 @@ export const UNITS = {
   mcv:      { name: '基地车',         cost: 2000, buildTime: 40, hp: 650, armor: 'heavy', speed: 1.5, sight: 5, deploys: 'yard', producer: 'factory' },
   titan:    { name: '泰坦重型机甲',   cost: 3200, buildTime: 45, hp: 950, armor: 'heavy', speed: 1.5, sight: 8, weapon: 'titanW', producer: 'factory', prereq: ['radar', 'npower'] },
   // —— 超级进化：阵营专属兵种 ——
-  prism:    { name: '光棱坦克',       cost: 1800, buildTime: 26, hp: 360, armor: 'heavy', speed: 1.7, sight: 8, weapon: 'prismW', producer: 'factory', prereq: ['radar'], side: 'player' },
+  prism:    { name: '光棱坦克',       cost: 1200, buildTime: 20, hp: 420, armor: 'heavy', speed: 1.7, sight: 8, weapon: 'prismW', producer: 'factory', prereq: ['radar'], side: 'player' }, // 轮44：费效比修正（$1800买1.13DPS+360HP无人问津→对标猎豹费效比，链式为特色溢价）
   mirage:   { name: '幻影坦克',       cost: 1600, buildTime: 24, hp: 380, armor: 'heavy', speed: 1.9, sight: 7, weapon: 'mirageW', producer: 'factory', prereq: ['radar'], side: 'player', stealth: true },
   kirov:    { name: '基洛夫重型飞艇', cost: 2400, buildTime: 30, hp: 1400, armor: 'air',  speed: 0.9, sight: 7, weapon: 'kirovW', producer: 'factory', prereq: ['radar', 'npower'], fly: true, side: 'enemy' },
   apoc:     { name: '天启突击坦克',   cost: 2800, buildTime: 40, hp: 1150, armor: 'heavy', speed: 1.1, sight: 6.5, weapon: 'apocW', producer: 'factory', prereq: ['radar', 'npower'], side: 'enemy' },
